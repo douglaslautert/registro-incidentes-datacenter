@@ -58,6 +58,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14
   transition:color .15s,border-color .15s;flex-shrink:0;
 }
 .tab-btn:hover{color:var(--accent)}
+.topbar-gh{
+  margin-left:auto;align-self:center;flex-shrink:0;white-space:nowrap;
+  font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--accent);text-decoration:none;
+  border:1px solid var(--accent);border-radius:4px;padding:4px 10px;
+}
+.topbar-gh:hover{background:var(--accent-soft)}
 .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
 
 /* ── SIDEBAR + CONTENT SHELL ── */
@@ -250,6 +257,7 @@ svg.c4{font-family:var(--sans);display:block;max-width:100%}
   <button class="tab-btn" onclick="showPanel('impl')">7 · Implementação</button>
   <button class="tab-btn" onclick="showPanel('runbook')">8 · Runbook</button>
   <button class="tab-btn" onclick="showPanel('download')">9 · Download</button>
+  <a class="topbar-gh" href="https://github.com/douglaslautert/registro-incidentes-datacenter" target="_blank" rel="noopener">GitHub ↗</a>
 </div>
 
 <div id="shell">
@@ -267,7 +275,7 @@ svg.c4{font-family:var(--sans);display:block;max-width:100%}
 
   <div class="cover-tag">Etapa 1 · Entendimento do Negócio e do Problema</div>
   <h1>Registro de Incidentes<br>do Datacenter</h1>
-  <p style="color:var(--muted);font-size:13px;margin-bottom:1rem">Universidade pública · GLPI + Zabbix · on-premises · v2.0 · 17/10/2026</p>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:1rem">Universidade pública · GLPI + Zabbix · on-premises · v2.0 · 17/10/2026 · Repositório: <a href="https://github.com/douglaslautert/registro-incidentes-datacenter" target="_blank" rel="noopener" style="color:var(--accent)">github.com/douglaslautert/registro-incidentes-datacenter</a></p>
   <div class="chips">
     <span class="chip">Universidade pública</span>
     <span class="chip">GLPI + Zabbix · MVP</span>
