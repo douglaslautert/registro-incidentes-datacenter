@@ -221,6 +221,14 @@ svg.c4{font-family:var(--sans);display:block;max-width:100%}
 .rm-title{font-weight:600;font-size:.9rem;margin-bottom:.5rem}
 .rm-item{font-size:12px;color:var(--muted);line-height:1.6}
 
+/* ── DOWNLOAD ── */
+.dl-btn{display:inline-flex;align-items:center;gap:.5rem;font-weight:600;font-size:13px;
+  color:#fff;background:var(--accent);border-radius:6px;padding:.65rem 1.1rem;
+  text-decoration:none;margin:.25rem .5rem .25rem 0}
+.dl-btn:hover{opacity:.9}
+.dl-btn.alt{color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .dl-btn:not(.alt){color:#0B0E18}}
+
 @media(max-width:700px){
   #sidebar{display:none}
   #content{padding:1.5rem 1rem 5rem}
@@ -241,6 +249,7 @@ svg.c4{font-family:var(--sans);display:block;max-width:100%}
   <button class="tab-btn" onclick="showPanel('backlog')">6 · Backlog</button>
   <button class="tab-btn" onclick="showPanel('impl')">7 · Implementação</button>
   <button class="tab-btn" onclick="showPanel('runbook')">8 · Runbook</button>
+  <button class="tab-btn" onclick="showPanel('download')">9 · Download</button>
 </div>
 
 <div id="shell">
@@ -1112,12 +1121,43 @@ curl -sk https://glpi.intra/apirest.php | grep -c session</pre>
   </table></div>
 </div>
 
+<!-- ══════════ PAINEL 9: DOWNLOAD ══════════ -->
+<div class="panel" id="panel-download">
+
+  <div class="cover-tag">Etapa 9 · Download da implementação</div>
+  <h1>Download do projeto</h1>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:1rem">Pasta <code>registro-incidentes-datacenter</code> completa: playbooks Ansible, scripts de configuração e documentação.</p>
+
+  <h2 id="dl-baixar">Baixar a pasta</h2>
+  <a class="dl-btn" href="download/registro-incidentes-datacenter.zip" download>⬇ registro-incidentes-datacenter.zip</a>
+  <a class="dl-btn alt" href="https://github.com/douglaslautert/registro-incidentes-datacenter" target="_blank" rel="noopener">Ver no GitHub</a>
+  <div class="callout info">Descompacte o arquivo para obter a pasta <code>registro-incidentes-datacenter/</code>. Ou clone o repositório: <code>git clone https://github.com/douglaslautert/registro-incidentes-datacenter.git</code></div>
+
+  <h2 id="dl-conteudo">Conteúdo da pasta</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Caminho</th><th>Descrição</th></tr></thead>
+    <tbody>
+      <tr><td><code>README.md</code></td><td>Visão geral e passo a passo de instalação</td></tr>
+      <tr><td><code>index.html</code></td><td>Este documento (Master Doc)</td></tr>
+      <tr><td><code>ansible/site.yml</code></td><td>Playbook principal</td></tr>
+      <tr><td><code>ansible/inventory/hosts.ini</code></td><td>Inventário das VMs (GLPI e Zabbix)</td></tr>
+      <tr><td><code>ansible/group_vars/all.yml</code></td><td>Variáveis globais (senhas via Ansible Vault)</td></tr>
+      <tr><td><code>ansible/roles/zabbix/</code></td><td>Instalação do Zabbix, template de configuração e webhook GLPI</td></tr>
+      <tr><td><code>ansible/roles/backup/</code></td><td>Scripts de backup do GLPI e do Zabbix</td></tr>
+      <tr><td><code>ansible/roles/firewall/</code></td><td>Regras de firewall</td></tr>
+      <tr><td><code>scripts/</code></td><td>Configuração via API: regras do GLPI, usuário de serviço, media type e monitor no Zabbix</td></tr>
+      <tr><td><code>docs/</code></td><td>Runbook, modelo C4 (<code>workspace.dsl</code>) e cópia do Master Doc</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">O pacote não contém senhas. Antes de rodar o playbook, gere os valores com <code>ansible-vault encrypt_string</code> e ajuste o inventário para a sua rede.</div>
+</div>
+
 </main>
 </div><!-- /shell -->
 
 <script>
 // ── PANELS ──
-var PANELS = ['negocio','requisitos','restricoes','arquitetura','c4','backlog','impl','runbook'];
+var PANELS = ['negocio','requisitos','restricoes','arquitetura','c4','backlog','impl','runbook','download'];
 var SIDEBARDATA = {
   negocio: [
     {id:'n-problema',label:'Problema'},
@@ -1170,6 +1210,10 @@ var SIDEBARDATA = {
     {id:'rb-restore',label:'Restaurar GLPI'},
     {id:'rb-update',label:'Atualizar GLPI/Zabbix'},
     {id:'rb-monit',label:'Alertas Zabbix'},
+  ],
+  download: [
+    {id:'dl-baixar',label:'Baixar a pasta'},
+    {id:'dl-conteudo',label:'Conteúdo'},
   ]
 };
 
