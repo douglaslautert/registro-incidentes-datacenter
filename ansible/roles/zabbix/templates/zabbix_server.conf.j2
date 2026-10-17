@@ -1,0 +1,24 @@
+DBHost=localhost
+DBName={{ zabbix_db_name }}
+DBUser={{ zabbix_db_user }}
+DBPassword={{ zabbix_db_password }}
+DBPort=5432
+
+# Performance (ajuste conforme número de hosts)
+StartPollers=10
+StartPingers=5
+StartTrappers=5
+CacheSize=128M
+HistoryCacheSize=64M
+TrendCacheSize=32M
+ValueCacheSize=128M
+
+# Scripts e alertas
+AlertScriptsPath=/usr/lib/zabbix/alertscripts
+ExternalScripts=/usr/lib/zabbix/externalscripts
+
+# Log
+LogType=file
+LogFile=/var/log/zabbix/zabbix_server.log
+LogFileSize=100
+DebugLevel=3

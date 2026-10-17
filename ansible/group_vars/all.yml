@@ -1,0 +1,23 @@
+# Senhas via: ansible-vault encrypt_string 'valor' --name 'var'
+zabbix_version: "7.0"
+zabbix_db_name: zabbix
+zabbix_db_user: zabbix
+zabbix_db_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  # ansible-vault encrypt_string 'SuaSenhaAqui' --name 'zabbix_db_password'
+
+glpi_service_user: zabbix-api
+glpi_service_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  # ansible-vault encrypt_string 'SuaSenhaAqui' --name 'glpi_service_password'
+glpi_api_url: "https://glpi.suarede.intra/apirest.php"
+glpi_app_token: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  # ansible-vault encrypt_string 'AppTokenDoGLPI' --name 'glpi_app_token'
+
+ldap_server: "ldap.suarede.intra"
+smtp_server: "smtp.suarede.intra"
+smtp_port: 587
+
+backup_dest: "/mnt/backup/datacenter"
+backup_retention_days: 30

@@ -1,0 +1,48 @@
+---
+- name: Instalar UFW
+  apt:
+    name: ufw
+    state: present
+
+- name: Política padrão — bloquear tudo de entrada
+  ufw:
+    default: deny
+    direction: incoming
+
+- name: SSH apenas da rede de gerência
+  ufw:
+    rule: allow
+    from_ip: "192.168.10.0/24"
+    port: "22"
+    proto: tcp
+
+- name: HTTPS apenas da rede interna e VPN
+  ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+    port: "443"
+    proto: tcp
+  loop:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+
+- name: SNMP saída — VM-ZABBIX coleta equipamentos
+  ufw:
+    rule: allow
+    port: "161"
+    proto: udp
+    direction: out
+  when: "'zabbix' in group_names"
+
+- name: Zabbix Agent saída — TCP 10050
+  ufw:
+    rule: allow
+    port: "10050"
+    proto: tcp
+    direction: out
+  when: "'zabbix' in group_names"
+
+- name: Habilitar UFW
+  ufw:
+    state: enabled

@@ -1,0 +1,39 @@
+---
+- name: Criar diretório de backup
+  file:
+    path: "{{ backup_dest }}"
+    state: directory
+    mode: '0750'
+
+- name: Copiar script de backup GLPI
+  copy:
+    src: backup_glpi.sh
+    dest: /opt/backup/backup_glpi.sh
+    mode: '0750'
+  when: "'glpi' in group_names"
+
+- name: Copiar script de backup Zabbix
+  copy:
+    src: backup_zabbix.sh
+    dest: /opt/backup/backup_zabbix.sh
+    mode: '0750'
+  when: "'zabbix' in group_names"
+
+- name: Cron backup diário GLPI (02:00)
+  cron:
+    name: backup_glpi
+    hour: "2"
+    minute: "0"
+    job: "/opt/backup/backup_glpi.sh 2>&1 | logger -t backup_glpi"
+    user: root
+  when: "'glpi' in group_names"
+
+- name: Cron backup semanal Zabbix (domingo 03:00)
+  cron:
+    name: backup_zabbix
+    weekday: "0"
+    hour: "3"
+    minute: "0"
+    job: "/opt/backup/backup_zabbix.sh 2>&1 | logger -t backup_zabbix"
+    user: root
+  when: "'zabbix' in group_names"

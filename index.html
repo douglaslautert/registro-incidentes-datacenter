@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Master Doc · Registro de Incidentes do Datacenter</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#F4F7FB; --surface:#fff; --border:#DDE3EE; --text:#15192A; --muted:#68768F;
+  --accent:#1D4ED8; --accent-soft:#EEF4FF;
+  --green:#057A55; --green-soft:#ECFDF5;
+  --amber:#B45309; --amber-soft:#FFFBEB;
+  --red:#B91C1C;   --red-soft:#FEF2F2;
+  --purple:#6D28D9;--purple-soft:#F5F3FF;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+  --rad:8px;
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B0E18; --surface:#111520; --border:#1C2135; --text:#E2E8F6; --muted:#7A89A8;
+    --accent:#93C5FD; --accent-soft:#0E1E40;
+    --green:#34D399; --green-soft:#022C22;
+    --amber:#FCD34D; --amber-soft:#2D1B00;
+    --red:#FCA5A5;   --red-soft:#2D0A0A;
+    --purple:#C4B5FD;--purple-soft:#1C0E3D;
+  }
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14px;line-height:1.7;padding:0 0 env(safe-area-inset-bottom,0)}
+
+/* ── TOPBAR ── */
+#topbar{
+  position:sticky;top:0;z-index:300;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:stretch;
+  padding:0 1.5rem;
+  gap:0;
+  overflow-x:auto;scrollbar-width:none;
+}
+#topbar::-webkit-scrollbar{display:none}
+.topbar-brand{
+  font-family:var(--mono);font-size:10px;font-weight:700;
+  color:var(--accent);letter-spacing:.08em;text-transform:uppercase;
+  display:flex;align-items:center;
+  padding-right:1.25rem;margin-right:.25rem;
+  border-right:1px solid var(--border);
+  white-space:nowrap;flex-shrink:0;
+}
+.tab-btn{
+  font-size:11px;font-weight:600;color:var(--muted);
+  background:none;border:none;cursor:pointer;
+  padding:14px 13px;white-space:nowrap;
+  border-bottom:2px solid transparent;
+  letter-spacing:.04em;text-transform:uppercase;
+  transition:color .15s,border-color .15s;flex-shrink:0;
+}
+.tab-btn:hover{color:var(--accent)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── SIDEBAR + CONTENT SHELL ── */
+#shell{display:flex;min-height:calc(100vh - 48px)}
+#sidebar{
+  width:220px;flex-shrink:0;
+  background:var(--surface);border-right:1px solid var(--border);
+  padding:1.5rem 0;
+  position:sticky;top:48px;
+  height:calc(100vh - 48px);
+  overflow-y:auto;scrollbar-width:thin;
+}
+#sidebar::-webkit-scrollbar{width:4px}
+#sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.sb-label{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--muted);
+  letter-spacing:.1em;text-transform:uppercase;padding:.75rem 1.25rem .3rem;display:block}
+.sb-link{
+  display:block;font-size:12.5px;color:var(--muted);text-decoration:none;
+  padding:.45rem 1.25rem .45rem 1.5rem;
+  border-left:2px solid transparent;
+  transition:color .12s,border-color .12s;
+  line-height:1.35;
+}
+.sb-link:hover{color:var(--text)}
+.sb-link.active{color:var(--accent);border-left-color:var(--accent);font-weight:500}
+#content{flex:1;min-width:0;padding:2.5rem 2.5rem 6rem;max-width:880px}
+
+/* PANELS */
+.panel{display:none}
+.panel.active{display:block}
+
+/* ── TYPOGRAPHY ── */
+.cover-tag{font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--accent);
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:.6rem}
+h1{font-size:1.8rem;font-weight:600;line-height:1.15;letter-spacing:-.02em;margin-bottom:.6rem}
+h2{font-size:1rem;font-weight:600;padding-bottom:.55rem;border-bottom:2px solid var(--border);margin-bottom:1.1rem;margin-top:2.5rem}
+h2:first-child{margin-top:0}
+h3{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:1.4rem 0 .7rem}
+p{max-width:72ch;margin-bottom:.75rem;line-height:1.68}
+p:last-child{margin-bottom:0}
+strong{font-weight:600}
+
+/* ── CHIPS / TAGS ── */
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem}
+.chip{font-family:var(--mono);font-size:9.5px;font-weight:700;padding:2px 9px;
+  border-radius:20px;border:1px solid var(--border);color:var(--muted)}
+.tag{display:inline-block;font-family:var(--mono);font-size:9px;padding:2px 6px;
+  border-radius:3px;font-weight:700;letter-spacing:.02em;white-space:nowrap;line-height:1.5}
+.tok{background:var(--green-soft);color:var(--green)}
+.twarn{background:var(--amber-soft);color:var(--amber)}
+.terr{background:var(--red-soft);color:var(--red)}
+.tinfo{background:var(--accent-soft);color:var(--accent)}
+.tpur{background:var(--purple-soft);color:var(--purple)}
+
+/* ── TABLES ── */
+.tw{overflow-x:auto;margin:.75rem 0}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{background:var(--bg);font-size:9px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);padding:7px 10px;
+  text-align:left;border-bottom:2px solid var(--border);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;line-height:1.55}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--accent-soft)}
+code{font-family:var(--mono);font-size:11px;background:var(--bg);
+  padding:1px 5px;border-radius:3px;border:1px solid var(--border)}
+
+/* ── CALLOUT ── */
+.callout{padding:.8rem 1rem;border-radius:6px;font-size:13px;
+  margin:.85rem 0;border-left:3px solid;max-width:74ch}
+.callout.info{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.callout.warn{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
+.callout.ok{background:var(--green-soft);border-color:var(--green);color:var(--green)}
+.callout.err{background:var(--red-soft);border-color:var(--red);color:var(--red)}
+
+/* ── SUMMARY CARDS ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1px;background:var(--border);border:1px solid var(--border);
+  border-radius:var(--rad);overflow:hidden;margin:.75rem 0}
+.card{background:var(--surface);padding:1rem 1.15rem}
+.card-label{font-family:var(--mono);font-size:9px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.3rem}
+.card-val{font-size:1.5rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.card-sub{font-size:11px;color:var(--muted);margin-top:.2rem}
+
+/* ── ADR ── */
+.adr-list{display:flex;flex-direction:column;gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--rad);overflow:hidden;margin:.75rem 0}
+.adr{background:var(--surface);padding:1rem 1.35rem;display:grid;grid-template-columns:68px 1fr;gap:1rem}
+.adr-id{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--accent);padding-top:2px}
+.adr-title{font-weight:600;margin-bottom:.25rem;font-size:13.5px}
+.adr-text{font-size:12.5px;color:var(--muted);line-height:1.55}
+.adr-disc{color:var(--red);font-size:12px;margin-top:.3rem}
+.adr-risk{color:var(--amber);font-size:12px;margin-top:.3rem}
+
+/* ── EPIC ── */
+.epic-hdr{display:flex;align-items:flex-start;gap:.75rem;margin-bottom:.85rem;
+  padding-bottom:.65rem;border-bottom:1px solid var(--border)}
+.epic-id{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--accent);
+  background:var(--accent-soft);padding:3px 8px;border-radius:4px;white-space:nowrap;margin-top:2px}
+.epic-title{font-weight:600;font-size:.95rem}
+.epic-meta{display:flex;gap:.35rem;flex-wrap:wrap;margin-top:.25rem}
+
+/* ── CODE BLOCKS ── */
+.file-block{border:1px solid var(--border);border-radius:var(--rad);overflow:hidden;margin:.85rem 0}
+.file-hdr{display:flex;align-items:center;gap:.6rem;padding:.5rem 1rem;
+  background:var(--bg);border-bottom:1px solid var(--border)}
+.file-path{font-family:var(--mono);font-size:10.5px;color:var(--accent);flex:1}
+.copy-btn{font-size:9.5px;font-family:var(--mono);font-weight:700;color:var(--muted);
+  background:none;border:1px solid var(--border);border-radius:3px;
+  padding:2px 7px;cursor:pointer;transition:color .12s,border-color .12s}
+.copy-btn:hover{color:var(--accent);border-color:var(--accent)}
+pre{background:var(--surface);padding:1rem 1.25rem;overflow-x:auto;
+  font-family:var(--mono);font-size:11.5px;line-height:1.75;margin:0;tab-size:2}
+.c-cm{color:var(--muted)} .c-k{color:var(--accent)} .c-v{color:var(--green)}
+.c-s{color:var(--amber)} .c-kw{color:var(--purple)}
+
+/* ── FLOW (sequência) ── */
+.flow{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);
+  border-radius:var(--rad);overflow:hidden;margin:.75rem 0}
+.flow-step{display:grid;grid-template-columns:70px 1fr;border-bottom:1px solid var(--border)}
+.flow-step:last-child{border-bottom:none}
+.flow-time{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);
+  background:var(--bg);padding:11px 12px;border-right:1px solid var(--border);
+  display:flex;align-items:flex-start;justify-content:center;white-space:nowrap;padding-top:13px}
+.flow-body{padding:11px 14px;font-size:13px}
+.flow-actor{font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);display:block;margin-bottom:2px}
+
+/* ── RISK TABLE ── */
+.risk-hi{color:var(--red);font-weight:600}
+.risk-md{color:var(--amber);font-weight:600}
+.risk-lo{color:var(--green);font-weight:600}
+
+/* ── C4 ── */
+.c4-wrap{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--rad);padding:1.25rem;overflow-x:auto;margin:.75rem 0}
+.c4-lbl{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:1rem}
+svg.c4{font-family:var(--sans);display:block;max-width:100%}
+
+/* ── STEPS ── */
+.steps{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);
+  border-radius:var(--rad);overflow:hidden;margin:.75rem 0}
+.step{display:grid;grid-template-columns:40px 1fr;border-bottom:1px solid var(--border)}
+.step:last-child{border-bottom:none}
+.step-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);
+  background:var(--bg);display:flex;align-items:flex-start;justify-content:center;
+  padding:12px 0;border-right:1px solid var(--border);padding-top:14px}
+.step-b{padding:12px 14px;font-size:13px}
+.step-t{font-weight:600;margin-bottom:.2rem}
+
+/* ── ROADMAP ── */
+.roadmap{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--rad);overflow:hidden;margin:.75rem 0}
+.rm-card{background:var(--surface);padding:1.1rem 1.25rem}
+.rm-badge{font-family:var(--mono);font-size:9.5px;font-weight:700;padding:2px 8px;
+  border-radius:3px;display:inline-block;margin-bottom:.6rem}
+.rm-mvp{background:var(--green-soft);color:var(--green)}
+.rm-f2{background:var(--amber-soft);color:var(--amber)}
+.rm-f3{background:var(--purple-soft);color:var(--purple)}
+.rm-title{font-weight:600;font-size:.9rem;margin-bottom:.5rem}
+.rm-item{font-size:12px;color:var(--muted);line-height:1.6}
+
+@media(max-width:700px){
+  #sidebar{display:none}
+  #content{padding:1.5rem 1rem 5rem}
+  .roadmap{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="topbar-brand">📋 Datacenter · Incidentes</div>
+  <button class="tab-btn active" onclick="showPanel('negocio')">1 · Negócio</button>
+  <button class="tab-btn" onclick="showPanel('requisitos')">2 · Requisitos</button>
+  <button class="tab-btn" onclick="showPanel('restricoes')">3 · Restrições</button>
+  <button class="tab-btn" onclick="showPanel('arquitetura')">4 · Arquitetura</button>
+  <button class="tab-btn" onclick="showPanel('c4')">5 · C4 Model</button>
+  <button class="tab-btn" onclick="showPanel('backlog')">6 · Backlog</button>
+  <button class="tab-btn" onclick="showPanel('impl')">7 · Implementação</button>
+  <button class="tab-btn" onclick="showPanel('runbook')">8 · Runbook</button>
+</div>
+
+<div id="shell">
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <!-- preenchida por JS por painel -->
+</nav>
+
+<!-- CONTENT -->
+<main id="content">
+
+<!-- ══════════ PAINEL 1: NEGÓCIO ══════════ -->
+<div class="panel active" id="panel-negocio">
+
+  <div class="cover-tag">Etapa 1 · Entendimento do Negócio e do Problema</div>
+  <h1>Registro de Incidentes<br>do Datacenter</h1>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:1rem">Universidade pública · GLPI + Zabbix · on-premises · v2.0 · 17/10/2026</p>
+  <div class="chips">
+    <span class="chip">Universidade pública</span>
+    <span class="chip">GLPI + Zabbix · MVP</span>
+    <span class="chip">Monolítico modular</span>
+    <span class="chip">On-premises · Proxmox</span>
+    <span class="chip">Ansible · SSH</span>
+  </div>
+
+  <h2 id="n-problema">Problema a resolver</h2>
+  <p>O datacenter opera sem sistema centralizado de registro de falhas. Quando um servidor cai, o horário real do início da falha se perde — o técnico só registra quando chega ao equipamento. Peças trocadas ficam em planilhas locais sem vínculo com o equipamento ou histórico. Não há como calcular MTTR, identificar recorrências nem justificar orçamento de reposição com dados.</p>
+  <p>Resultado: ausência de rastreabilidade, dificuldade em acionar garantias com fornecedores (sem número de chamado) e impossibilidade de gerar relatórios gerenciais sem trabalho manual.</p>
+
+  <h2 id="n-objetivos">Objetivos de negócio</h2>
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Objetivo</th><th>Como o sistema entrega</th><th>Indicador</th></tr></thead>
+    <tbody>
+      <tr><td>OB-01</td><td>Registrar horário exato de início e fim da falha</td><td>Webhook Zabbix → GLPI cria chamado no momento do evento</td><td>Delta evento → chamado &lt; 5 s</td></tr>
+      <tr><td>OB-02</td><td>Centralizar histórico de manutenção por equipamento</td><td>Chamado vinculado ao ativo; peças, fotos e causa raiz no mesmo registro</td><td>100% chamados com ativo vinculado</td></tr>
+      <tr><td>OB-03</td><td>Dados para justificar substituição de hardware</td><td>Relatório de incidentes por equipamento e peças, exportável em CSV/PDF</td><td>Gestor gera relatório em &lt; 2 min</td></tr>
+      <tr><td>OB-04</td><td>Reduzir MTTR</td><td>Abertura automática + categorização + atribuição em &lt; 1 min</td><td>Redução de 20% em 6 meses</td></tr>
+      <tr><td>OB-05</td><td>Dados dentro da universidade (compliance)</td><td>On-premises; sem SaaS externo; LDAP institucional</td><td>Zero dados em provedores externos</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="n-dominio">Domínio — o que torna este sistema diferente</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Característica do domínio</th><th>Impacto na arquitetura</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Equipe pequena, múltiplos papéis</strong></td><td>Abertura automática de chamados é obrigatória. Mínimo de digitação manual.</td></tr>
+      <tr><td><strong>Hardware crítico sem SLA formal</strong></td><td>Notificação ao plantão &lt; 60 s. Detecção → chamado em &lt; 5 s.</td></tr>
+      <tr><td><strong>Orçamento público, licitação para peças</strong></td><td>Campo de origem da peça (estoque / garantia / compra) é obrigatório — alimenta processo de licitação.</td></tr>
+      <tr><td><strong>Garantias de fornecedor (Dell, HPE)</strong></td><td>Campo "chamado do fornecedor" é requisito de domínio, não extra. Sem ele o histórico é incompleto para auditorias.</td></tr>
+      <tr><td><strong>Dados de infra são sensíveis</strong></td><td>SaaS descartado. IA na Fase 3 só com Ollama local ou aval formal.</td></tr>
+      <tr><td><strong>Perfis técnicos variados</strong></td><td>UI padrão do GLPI reduz curva de aprendizado. Sem UI customizada no MVP.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="n-stakeholders">Stakeholders</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Stakeholder</th><th>Interesse</th><th>O que o sistema entrega</th><th>Risco se não atendido</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Técnico de TI</strong></td><td>Menos tempo documentando</td><td>Chamado automático; formulário só do que exige julgamento</td><td>Sistema ignorado; volta a planilhas</td></tr>
+      <tr><td><strong>Gestor do datacenter</strong></td><td>Dados para decisão e relatórios</td><td>MTTR, equipamentos críticos, peças — exportáveis</td><td>Decisões sem embasamento; dificuldade em justificar orçamento</td></tr>
+      <tr><td><strong>Chefia / Pró-Reitoria</strong></td><td>Conformidade e auditoria</td><td>Histórico imutável; rastreabilidade de peças e garantias</td><td>Exposição em auditorias</td></tr>
+      <tr><td><strong>Segurança da informação</strong></td><td>Dados dentro do perímetro</td><td>On-premises; LDAP; auditoria nativa do GLPI</td><td>Não conformidade; risco de vazamento de topologia</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ══════════ PAINEL 2: REQUISITOS ══════════ -->
+<div class="panel" id="panel-requisitos">
+  <div class="cover-tag">Etapa 2 · Levantamento de Requisitos</div>
+  <h1>Requisitos</h1>
+
+  <h2 id="r-funcionais">Requisitos funcionais</h2>
+  <div class="tw"><table>
+    <thead><tr><th>ID</th><th>Requisito</th><th>Prio</th><th>Fase</th><th>Épico</th></tr></thead>
+    <tbody>
+      <tr><td>RF-01</td><td>Detectar falhas via SNMP, Agente Zabbix e ICMP</td><td><span class="tag terr">Crítico</span></td><td><span class="tag tok">MVP</span></td><td>E2</td></tr>
+      <tr><td>RF-02</td><td>Abrir chamado no GLPI em &lt; 5 s após trigger, com host, severidade e timestamp automáticos</td><td><span class="tag terr">Crítico</span></td><td><span class="tag tok">MVP</span></td><td>E2</td></tr>
+      <tr><td>RF-03</td><td>Atualizar chamado com horário de fim na recuperação do Zabbix</td><td><span class="tag terr">Crítico</span></td><td><span class="tag tok">MVP</span></td><td>E2</td></tr>
+      <tr><td>RF-04</td><td>Técnico registra diagnóstico, peças (modelo, S/N, origem), fotos antes/depois e causa raiz</td><td><span class="tag terr">Crítico</span></td><td><span class="tag tok">MVP</span></td><td>E3</td></tr>
+      <tr><td>RF-05</td><td>Categorizar chamado automaticamente pelo tipo de trigger</td><td><span class="tag twarn">Alto</span></td><td><span class="tag tok">MVP</span></td><td>E5</td></tr>
+      <tr><td>RF-06</td><td>Notificar técnico de plantão por e-mail em &lt; 60 s em chamados de alta prioridade</td><td><span class="tag twarn">Alto</span></td><td><span class="tag tok">MVP</span></td><td>E5</td></tr>
+      <tr><td>RF-07</td><td>Gestor visualiza MTTR por categoria, equipamentos com mais incidentes e peças mais trocadas</td><td><span class="tag twarn">Alto</span></td><td><span class="tag tok">MVP</span></td><td>E6</td></tr>
+      <tr><td>RF-08</td><td>Registrar número do chamado do fornecedor (garantia) vinculado ao chamado interno</td><td><span class="tag twarn">Alto</span></td><td><span class="tag tok">MVP</span></td><td>E3</td></tr>
+      <tr><td>RF-09</td><td>Autenticar usuários exclusivamente via LDAP institucional</td><td><span class="tag terr">Crítico</span></td><td><span class="tag tok">MVP</span></td><td>E7</td></tr>
+      <tr><td>RF-10</td><td>Webhook retenta até 3 vezes em falha de comunicação com o GLPI</td><td><span class="tag twarn">Alto</span></td><td><span class="tag tok">MVP</span></td><td>E2</td></tr>
+      <tr><td>RF-11</td><td>GLPI importa localização rack/U do NetBox automaticamente</td><td><span class="tag tinfo">Médio</span></td><td><span class="tag twarn">Fase 2</span></td><td>E8</td></tr>
+      <tr><td>RF-12</td><td>IA sugere causa raiz usando apenas Ollama local</td><td><span class="tag tinfo">Médio</span></td><td><span class="tag tpur">Fase 3</span></td><td>E9</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="r-desempenho">Desempenho e latência</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Atributo</th><th>Meta (SLA)</th><th>Limite aceitável</th><th>Justificativa</th></tr></thead>
+    <tbody>
+      <tr><td>Abertura de chamado (trigger → GLPI)</td><td>&lt; 5 s</td><td>30 s</td><td>Perder o timestamp inviabiliza o MTTR real</td></tr>
+      <tr><td>Tempo de resposta da UI (p95)</td><td>&lt; 2 s</td><td>5 s</td><td>Técnico acessa durante o incidente</td></tr>
+      <tr><td>Notificação por e-mail</td><td>&lt; 60 s</td><td>5 min</td><td>Plantão noturno: atraso = incidente sem atendimento</td></tr>
+      <tr><td>Disponibilidade da plataforma</td><td>99,5% / mês</td><td>99%</td><td>~3,6 h de indisponibilidade/mês aceitáveis</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="r-seguranca">Segurança</h2>
+  <div class="callout warn">Sistema de infraestrutura universitária: topologia, IPs e vulnerabilidades são ativos sensíveis. LGPD aplica-se a dados de usuários (logs de auditoria, acessos).</div>
+  <div class="tw"><table>
+    <thead><tr><th>Controle</th><th>Requisito</th><th>Norma</th></tr></thead>
+    <tbody>
+      <tr><td>Autenticação</td><td>LDAP institucional obrigatório; zero contas locais em produção</td><td>Política institucional</td></tr>
+      <tr><td>Autorização</td><td>RBAC: Técnico, Gestor, Somente-leitura; mapeados a grupos LDAP</td><td>Mínimo privilégio</td></tr>
+      <tr><td>Transporte</td><td>TLS 1.2+ em todas as interfaces; HTTPS obrigatório no webhook</td><td>NIST SP 800-52</td></tr>
+      <tr><td>Perímetro</td><td>Acesso só pela rede interna ou VPN; internet bloqueada</td><td>Política de firewall</td></tr>
+      <tr><td>Segredos</td><td>Variáveis de ambiente + Ansible Vault; fora do Git</td><td>OWASP Secrets Mgmt</td></tr>
+      <tr><td>Auditoria</td><td>Toda alteração gravada com usuário, campo e timestamp (GLPI nativo)</td><td>LGPD Art. 46 · ISO 27001 A.12.4</td></tr>
+      <tr><td>Patches</td><td>Atualizações de segurança em até 30 dias após release</td><td>CVE monitoring</td></tr>
+      <tr><td>IA (Fase 3)</td><td>Textos de chamados só saem da universidade com aval formal; padrão Ollama local</td><td>LGPD · política de dados</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="r-escala">Escalabilidade e manutenibilidade</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Dimensão</th><th>Capacidade MVP</th><th>Gatilho para ação</th></tr></thead>
+    <tbody>
+      <tr><td>Hosts monitorados (Zabbix)</td><td>Até 500</td><td>&gt; 400 hosts ou lag &gt; 30 s → aumentar vCPU da VM-ZABBIX</td></tr>
+      <tr><td>Volume de anexos</td><td>500 GB</td><td>&gt; 400 GB → migrar para MinIO (ADR-04)</td></tr>
+      <tr><td>RTO / RPO (GLPI)</td><td>RTO 4 h / RPO 24 h</td><td>Snapshot Proxmox antes de cada atualização</td></tr>
+      <tr><td>Versionamento</td><td>Git interno (Ansible, DSL, scripts)</td><td>Qualquer membro reconstrói o ambiente em &lt; 2 h</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ══════════ PAINEL 3: RESTRIÇÕES ══════════ -->
+<div class="panel" id="panel-restricoes">
+  <div class="cover-tag">Etapa 3 · Análise de Restrições e Viabilidade</div>
+  <h1>Restrições e Riscos</h1>
+
+  <h2 id="rt-tecnicas">Restrições técnicas</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Restrição</th><th>Origem</th><th>Impacto na arquitetura</th></tr></thead>
+    <tbody>
+      <tr><td>GLPI já instalado e em uso</td><td>Estado atual</td><td>Âncora do MVP. Não pode ser substituído sem migração de dados.</td></tr>
+      <tr><td>Hypervisor é Proxmox</td><td>Escolha anterior</td><td>VM-ZABBIX via <code>qm create</code>; snapshots antes de cada deploy</td></tr>
+      <tr><td>Ansible com SSH nas VMs</td><td>Infra existente</td><td>Todo deploy via playbooks — sem acesso manual ao servidor em produção</td></tr>
+      <tr><td>VMs sem acesso à internet</td><td>Política de segurança</td><td>Packages via mirror interno ou download prévio</td></tr>
+      <tr><td>LDAP como única IdP</td><td>Política de TI</td><td>Zero contas locais no GLPI; usuário de serviço criado via GLPI API</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="rt-financeiras">Restrições financeiras</h2>
+  <div class="callout ok">Custo total em licenças: R$ 0. GLPI (GPL) e Zabbix (AGPL) são open source. O custo real é tempo de implementação da equipe.</div>
+  <div class="tw"><table>
+    <thead><tr><th>Item</th><th>Custo</th><th>Observação</th></tr></thead>
+    <tbody>
+      <tr><td>GLPI</td><td>R$ 0</td><td>GPL · já instalado</td></tr>
+      <tr><td>Zabbix</td><td>R$ 0</td><td>AGPL · sem licença por host</td></tr>
+      <tr><td>VM-ZABBIX</td><td>Custo marginal</td><td>4 vCPU + 8 GB RAM + 100 GB SSD — capacidade disponível no cluster</td></tr>
+      <tr><td>Plugin Fields</td><td>R$ 0</td><td>Plugin GPL da comunidade</td></tr>
+      <tr><td>Ollama (Fase 3)</td><td>R$ 0 software + GPU</td><td>Hardware GPU a avaliar na Fase 3</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="rt-equipe">Capacidade da equipe</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Skill</th><th>Nível</th><th>O que muda na arquitetura</th></tr></thead>
+    <tbody>
+      <tr><td>GLPI (admin)</td><td><span class="tag tok">Familiar</span></td><td>Configuração de regras e Plugin Fields via UI — sem risco de curva</td></tr>
+      <tr><td>Ansible</td><td><span class="tag tok">Disponível</span></td><td>Deploy automatizado viável; roles community.zabbix reduzem esforço</td></tr>
+      <tr><td>Zabbix (admin)</td><td><span class="tag twarn">A desenvolver</span></td><td>1 semana de setup + testes antes de ir a produção</td></tr>
+      <tr><td>JavaScript (webhook)</td><td><span class="tag twarn">Básico</span></td><td>Script de 80 linhas pronto no repo; equipe valida, não escreve do zero</td></tr>
+      <tr><td>Proxmox</td><td><span class="tag tok">Familiar</span></td><td>VM criada via CLI (<code>qm create</code>) — documentado no runbook</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="rt-riscos">Matriz de riscos</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Risco</th><th>Prob.</th><th>Impacto</th><th>Nível</th><th>Mitigação</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Webhook falha silenciosamente — chamados não abertos</td>
+        <td>Média</td><td>Alto</td>
+        <td><span class="tag terr">Alto</span></td>
+        <td>Retry 3 × 60 s + alerta Zabbix se GLPI não responder em 30 s + log do Media Type</td>
+      </tr>
+      <tr>
+        <td>Plugin Fields incompatível com versão do GLPI existente</td>
+        <td>Baixa</td><td>Médio</td>
+        <td><span class="tag twarn">Médio</span></td>
+        <td>Testar em snapshot da VM-GLPI antes de instalar em produção</td>
+      </tr>
+      <tr>
+        <td>Volume de fotos supera 500 GB</td>
+        <td>Baixa</td><td>Médio</td>
+        <td><span class="tag twarn">Médio</span></td>
+        <td>Alerta Zabbix a 80% de uso; plano de migração para MinIO documentado</td>
+      </tr>
+      <tr>
+        <td>Técnico único que conhece a config sai da equipe</td>
+        <td>Média</td><td>Alto</td>
+        <td><span class="tag terr">Alto</span></td>
+        <td>Toda config no Git + runbook completo; nenhum passo manual não documentado</td>
+      </tr>
+      <tr>
+        <td>Dados de chamados enviados a LLM externo sem aval (Fase 3)</td>
+        <td>Média</td><td>Alto</td>
+        <td><span class="tag terr">Alto</span></td>
+        <td>ADR-05 bloqueia por padrão; configuração externa exige variável de ambiente + aval documentado</td>
+      </tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ══════════ PAINEL 4: ARQUITETURA ══════════ -->
+<div class="panel" id="panel-arquitetura">
+  <div class="cover-tag">Etapa 4 · Definição da Arquitetura e Componentes</div>
+  <h1>Arquitetura</h1>
+
+  <h2 id="a-estilo">Estilo arquitetural: monolítico modular</h2>
+  <p>Dois monolitos bem definidos — GLPI e Zabbix — integrados por um único ponto de comunicação: o webhook HTTPS. Esta é a arquitetura correta para o contexto, não uma limitação.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Estilo considerado</th><th>Decisão</th><th>Justificativa</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Monolítico modular</strong></td><td><span class="tag tok">✅ Escolhido</span></td><td>Equipe pequena, domínio estável, escala previsível, zero custo de licença, APIs REST maduras</td></tr>
+      <tr><td>Microsserviços</td><td><span class="tag terr">Descartado</span></td><td>Overhead operacional desproporcional. A equipe não tem capacidade de operar Kubernetes, service mesh e observabilidade distribuída sem ganho real no volume desta instalação.</td></tr>
+      <tr><td>Orientado a eventos (Kafka)</td><td><span class="tag terr">Descartado</span></td><td>Webhook síncrono já atende &lt; 5 s. Broker adicionaria single point of failure sem benefício.</td></tr>
+      <tr><td>SaaS (Freshservice)</td><td><span class="tag terr">Descartado</span></td><td>Dados de infra fora da universidade — viola política de segurança. Custo por técnico incompatível com orçamento público.</td></tr>
+      <tr><td>Sistema próprio (Opção F)</td><td><span class="tag terr">Descartado</span></td><td>GLPI atende 72% nativamente. Desenvolver do zero: prazo + manutenção + dependência de quem escreveu = risco de legado imediato.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="a-responsabilidades">Divisão de responsabilidades</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Contêiner</th><th>Responsabilidade única</th><th>O que NÃO é dele</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Zabbix Server</strong></td><td>Detectar, medir, avaliar triggers, disparar webhook</td><td>Não armazena histórico de manutenção; não gerencia ativos</td></tr>
+      <tr><td><strong>Zabbix Frontend</strong></td><td>Visualização de métricas e configuração</td><td>Não é a interface dos técnicos de manutenção; não substitui o GLPI</td></tr>
+      <tr><td><strong>GLPI Web App</strong></td><td>Registro, gestão e histórico de incidentes; ativos; relatórios</td><td>Não faz monitoramento; não coleta métricas</td></tr>
+      <tr><td><strong>GLPI DB (MariaDB)</strong></td><td>Chamados, ativos, campos extras, auditoria</td><td>Não armazena métricas do Zabbix; não é consultado diretamente pelo Zabbix</td></tr>
+      <tr><td><strong>Zabbix DB (PostgreSQL)</strong></td><td>Histórico de métricas e eventos de monitoramento</td><td>Não armazena chamados ou documentos de manutenção</td></tr>
+      <tr><td><strong>Volume de arquivos</strong></td><td>Armazenamento binário de fotos, laudos, notas fiscais</td><td>Não indexa nem processa; referenciado pelo GLPI</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="a-protocolos">Protocolos de comunicação</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Fluxo</th><th>Protocolo</th><th>Por quê</th></tr></thead>
+    <tbody>
+      <tr><td>Usuário → GLPI / Zabbix</td><td>HTTPS (TLS 1.2+)</td><td>Padrão web; credenciais LDAP não podem trafegar em HTTP claro</td></tr>
+      <tr><td>Zabbix Server → GLPI API</td><td>HTTPS + JSON (Webhook)</td><td>API REST do GLPI; TLS garante confidencialidade do session token</td></tr>
+      <tr><td>Zabbix → Equipamentos</td><td>SNMP v2c (UDP 161), Agent (TCP 10050), ICMP</td><td>SNMP: padrão de monitoramento Dell/HPE; Agent: métricas de OS</td></tr>
+      <tr><td>GLPI → LDAP</td><td>LDAPS (TCP 636)</td><td>LDAP plano (389) descartado — credenciais em claro na rede interna</td></tr>
+      <tr><td>GLPI → SMTP</td><td>SMTP + STARTTLS (TCP 587)</td><td>Notificações; STARTTLS obrigatório no servidor institucional</td></tr>
+      <tr><td>GLPI → NetBox (F2)</td><td>HTTPS + REST</td><td>API padrão do NetBox; autenticação por token</td></tr>
+      <tr><td>GLPI → Ollama (F3)</td><td>HTTP local (11434)</td><td>Ollama na mesma rede interna; sem exposição externa</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="a-adrs">Decisões de arquitetura (ADRs)</h2>
+  <div class="adr-list">
+    <div class="adr">
+      <div class="adr-id">ADR-01</div>
+      <div>
+        <div class="adr-title">GLPI como sistema de registro</div>
+        <div class="adr-text"><strong>Decisão:</strong> usar GLPI; campos extras via Plugin Fields.<br><strong>Trade-off aceito:</strong> UI datada e configuração inicial alta — aceitos em troca de zero licença, on-premises, API REST madura e 72% dos campos nativos.</div>
+        <div class="adr-disc">Descartado: sistema próprio — prazo incompatível e manutenção dependente de quem escreveu.</div>
+      </div>
+    </div>
+    <div class="adr">
+      <div class="adr-id">ADR-02</div>
+      <div>
+        <div class="adr-title">Zabbix abre chamado por webhook síncrono</div>
+        <div class="adr-text"><strong>Decisão:</strong> Media Type JS no Zabbix faz POST na API do GLPI em &lt; 5 s.<br><strong>Trade-off aceito:</strong> dependência temporal entre Zabbix e GLPI — mitigada por retry (3 × 60 s) e health check.</div>
+        <div class="adr-disc">Descartados: abertura manual (perde timestamp) e broker de mensagens (overhead sem ganho).</div>
+      </div>
+    </div>
+    <div class="adr">
+      <div class="adr-id">ADR-03</div>
+      <div>
+        <div class="adr-title">Um banco por ferramenta</div>
+        <div class="adr-text"><strong>Decisão:</strong> Zabbix no PostgreSQL, GLPI no MariaDB. Integração só pela API.<br><strong>Trade-off aceito:</strong> dois bancos para backup e monitorar — aceito por atualizações independentes e rollback isolado.</div>
+        <div class="adr-disc">Descartado: banco compartilhado — acopla versões; atualização de schema de um quebra o outro.</div>
+      </div>
+    </div>
+    <div class="adr">
+      <div class="adr-id">ADR-04</div>
+      <div>
+        <div class="adr-title">Anexos em volume de disco (plano B: MinIO)</div>
+        <div class="adr-text"><strong>Decisão:</strong> volume local 500 GB + backup diário rsync.<br><strong>Trade-off aceito:</strong> menos elástico que object storage — aceito para MVP.</div>
+        <div class="adr-risk">Reavaliar: uso &gt; 400 GB → migrar para MinIO (S3-compatible, suportado pelo GLPI 10+).</div>
+      </div>
+    </div>
+    <div class="adr">
+      <div class="adr-id">ADR-05</div>
+      <div>
+        <div class="adr-title">NetBox na Fase 2, IA na Fase 3</div>
+        <div class="adr-text"><strong>Decisão:</strong> NetBox aguarda cadastro completo do inventário; IA aguarda decisão sobre LLM local vs. externo.<br><strong>Trade-off aceito:</strong> MVP sem localização automática e sem causa raiz por IA — o valor central é entregue mesmo assim.</div>
+        <div class="adr-disc">Condição da IA: Ollama local por padrão, ou aval formal documentado para provedor externo.</div>
+      </div>
+    </div>
+    <div class="adr">
+      <div class="adr-id">ADR-06</div>
+      <div>
+        <div class="adr-title">On-premises em duas VMs no Proxmox</div>
+        <div class="adr-text"><strong>Decisão:</strong> VM-ZABBIX + VM-GLPI no cluster Proxmox existente.<br><strong>Trade-off aceito:</strong> a equipe opera a infra — aceito porque já opera o datacenter; duas VMs a mais é marginal.</div>
+        <div class="adr-disc">Descartado: SaaS — dados fora da universidade viola política de segurança; custo por técnico incompatível com orçamento público.</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="a-rastreabilidade">Rastreabilidade OB → RF → ADR → Implementação</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Objetivo</th><th>Requisito</th><th>ADR</th><th>Implementação</th></tr></thead>
+    <tbody>
+      <tr><td>OB-01 · Timestamp exato</td><td>RF-01, RF-02</td><td>ADR-02</td><td><code>glpi_webhook.js</code> — Media Type JS no Zabbix</td></tr>
+      <tr><td>OB-02 · Histórico centralizado</td><td>RF-04, RF-08</td><td>ADR-01</td><td>GLPI Ticket + Plugin Fields + Documents</td></tr>
+      <tr><td>OB-03 · Dados para gestão</td><td>RF-07</td><td>ADR-01</td><td>Módulo Relatórios GLPI; CSV/PDF nativo</td></tr>
+      <tr><td>OB-04 · Reduzir MTTR</td><td>RF-05, RF-06</td><td>ADR-02</td><td><code>glpi_setup_rules.py</code> + Notification Engine</td></tr>
+      <tr><td>OB-05 · Dados na universidade</td><td>RF-09</td><td>ADR-05, ADR-06</td><td>On-premises Proxmox; LDAPS; Ollama local na F3</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ══════════ PAINEL 5: C4 MODEL ══════════ -->
+<div class="panel" id="panel-c4">
+  <div class="cover-tag">Etapa 5 · Documentação e Visualização</div>
+  <h1>Modelo C4</h1>
+
+  <h2 id="c4-n1">Nível 1 — Contexto</h2>
+  <p>Quem usa a plataforma e com quais sistemas ela conversa.</p>
+  <div class="c4-wrap">
+    <div class="c4-lbl">C4 · N1 · Contexto do sistema</div>
+    <svg class="c4" viewBox="0 0 820 400" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="a1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#68768F"/></marker>
+        <marker id="a2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#6D28D9"/></marker>
+      </defs>
+      <rect x="270" y="130" width="270" height="130" rx="10" fill="#1D4ED8" opacity=".92"/>
+      <text x="405" y="168" text-anchor="middle" font-size="14" font-weight="700" fill="white">Plataforma de</text>
+      <text x="405" y="186" text-anchor="middle" font-size="14" font-weight="700" fill="white">Registro de Incidentes</text>
+      <text x="405" y="207" text-anchor="middle" font-size="10" fill="white" opacity=".75">GLPI + Zabbix · on-premises</text>
+      <text x="405" y="222" text-anchor="middle" font-size="10" fill="white" opacity=".65">VM-GLPI + VM-ZABBIX · Proxmox</text>
+      <text x="405" y="247" text-anchor="middle" font-size="10" fill="white" opacity=".55">Ubuntu 22.04 · rede interna</text>
+      <circle cx="70" cy="150" r="20" fill="#334155"/>
+      <line x1="70" y1="170" x2="70" y2="200" stroke="#334155" stroke-width="2.5"/>
+      <line x1="52" y1="182" x2="88" y2="182" stroke="#334155" stroke-width="2.5"/>
+      <line x1="70" y1="200" x2="52" y2="222" stroke="#334155" stroke-width="2.5"/>
+      <line x1="70" y1="200" x2="88" y2="222" stroke="#334155" stroke-width="2.5"/>
+      <text x="70" y="238" text-anchor="middle" font-size="11" font-weight="600" fill="currentColor">Técnico de TI</text>
+      <circle cx="70" cy="300" r="20" fill="#334155"/>
+      <line x1="70" y1="320" x2="70" y2="350" stroke="#334155" stroke-width="2.5"/>
+      <line x1="52" y1="332" x2="88" y2="332" stroke="#334155" stroke-width="2.5"/>
+      <line x1="70" y1="350" x2="52" y2="372" stroke="#334155" stroke-width="2.5"/>
+      <line x1="70" y1="350" x2="88" y2="372" stroke="#334155" stroke-width="2.5"/>
+      <text x="70" y="388" text-anchor="middle" font-size="11" font-weight="600" fill="currentColor">Gestor</text>
+      <rect x="30" y="22" width="155" height="55" rx="8" fill="#475569"/>
+      <text x="107" y="47" text-anchor="middle" font-size="11" font-weight="600" fill="white">Equipamentos</text>
+      <text x="107" y="63" text-anchor="middle" font-size="9" fill="white" opacity=".75">Servidores · Switches · UPS</text>
+      <rect x="590" y="22" width="135" height="52" rx="8" fill="#475569"/>
+      <text x="657" y="47" text-anchor="middle" font-size="11" font-weight="600" fill="white">LDAP Institucional</text>
+      <text x="657" y="62" text-anchor="middle" font-size="9" fill="white" opacity=".75">Autenticação</text>
+      <rect x="590" y="100" width="135" height="52" rx="8" fill="#475569"/>
+      <text x="657" y="125" text-anchor="middle" font-size="11" font-weight="600" fill="white">SMTP Institucional</text>
+      <text x="657" y="140" text-anchor="middle" font-size="9" fill="white" opacity=".75">Notificações</text>
+      <rect x="590" y="180" width="135" height="52" rx="8" fill="none" stroke="#6D28D9" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <text x="657" y="205" text-anchor="middle" font-size="11" font-weight="600" fill="#6D28D9">NetBox</text>
+      <text x="657" y="220" text-anchor="middle" font-size="9" fill="#6D28D9" opacity=".8">Racks · IPs (Fase 2)</text>
+      <rect x="590" y="258" width="135" height="52" rx="8" fill="none" stroke="#6D28D9" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <text x="657" y="283" text-anchor="middle" font-size="11" font-weight="600" fill="#6D28D9">Provedor IA</text>
+      <text x="657" y="298" text-anchor="middle" font-size="9" fill="#6D28D9" opacity=".8">Ollama local (Fase 3)</text>
+      <line x1="107" y1="77" x2="285" y2="157" stroke="#68768F" stroke-width="1.5" marker-end="url(#a1)"/>
+      <text x="172" y="107" text-anchor="middle" font-size="9" fill="#68768F">SNMP · ICMP</text>
+      <line x1="130" y1="172" x2="268" y2="183" stroke="#68768F" stroke-width="1.5" marker-end="url(#a1)"/>
+      <text x="195" y="168" text-anchor="middle" font-size="9" fill="#68768F">HTTPS</text>
+      <line x1="130" y1="315" x2="268" y2="228" stroke="#68768F" stroke-width="1.5" marker-end="url(#a1)"/>
+      <text x="180" y="285" text-anchor="middle" font-size="9" fill="#68768F">HTTPS</text>
+      <line x1="540" y1="168" x2="588" y2="50" stroke="#68768F" stroke-width="1.5" marker-end="url(#a1)"/>
+      <line x1="540" y1="180" x2="588" y2="130" stroke="#68768F" stroke-width="1.5" marker-end="url(#a1)"/>
+      <line x1="540" y1="195" x2="588" y2="202" stroke="#6D28D9" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a2)"/>
+      <line x1="540" y1="210" x2="588" y2="278" stroke="#6D28D9" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a2)"/>
+      <line x1="30" y1="378" x2="60" y2="378" stroke="#6D28D9" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="68" y="382" font-size="9" fill="#6D28D9">Fase 2/3</text>
+      <line x1="130" y1="378" x2="160" y2="378" stroke="#68768F" stroke-width="1.5"/>
+      <text x="168" y="382" font-size="9" fill="#68768F">MVP</text>
+    </svg>
+  </div>
+
+  <h2 id="c4-n2">Nível 2 — Contêineres</h2>
+  <p>As unidades que são instaladas e executam separadas. A ligação entre Zabbix e GLPI é um único ponto: o webhook HTTPS.</p>
+  <div class="c4-wrap">
+    <div class="c4-lbl">C4 · N2 · Contêineres · estado alvo</div>
+    <svg class="c4" viewBox="0 0 840 420" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="b1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#68768F"/></marker>
+        <marker id="b2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#1D4ED8"/></marker>
+        <marker id="b3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#057A55"/></marker>
+      </defs>
+      <rect x="18" y="18" width="295" height="260" rx="8" fill="none" stroke="#68768F" stroke-width="1.5" stroke-dasharray="7,4"/>
+      <text x="32" y="36" font-size="9" font-weight="700" fill="#68768F" letter-spacing=".06em">VM-ZABBIX · Ubuntu 22.04 · 4vCPU 8GB</text>
+      <rect x="32" y="48" width="118" height="68" rx="6" fill="#1D4ED8" opacity=".9"/>
+      <text x="91" y="77" text-anchor="middle" font-size="10" font-weight="600" fill="white">Zabbix Frontend</text>
+      <text x="91" y="92" text-anchor="middle" font-size="8.5" fill="white" opacity=".8">PHP · Nginx</text>
+      <text x="91" y="107" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">Alertas · config</text>
+      <rect x="32" y="134" width="118" height="72" rx="6" fill="#1E3A8A"/>
+      <text x="91" y="162" text-anchor="middle" font-size="10" font-weight="600" fill="white">Zabbix Server</text>
+      <text x="91" y="177" text-anchor="middle" font-size="8.5" fill="white" opacity=".8">C daemon</text>
+      <text x="91" y="192" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">Coleta · triggers · webhook</text>
+      <rect x="175" y="88" width="118" height="68" rx="6" fill="#1E293B"/>
+      <ellipse cx="234" cy="88" rx="59" ry="10" fill="#334155"/>
+      <text x="234" y="131" text-anchor="middle" font-size="10" font-weight="600" fill="white">Zabbix DB</text>
+      <text x="234" y="146" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">PostgreSQL</text>
+      <rect x="350" y="18" width="330" height="308" rx="8" fill="none" stroke="#68768F" stroke-width="1.5" stroke-dasharray="7,4"/>
+      <text x="365" y="36" font-size="9" font-weight="700" fill="#68768F" letter-spacing=".06em">VM-GLPI · Ubuntu 22.04 · 4vCPU 8GB</text>
+      <rect x="365" y="48" width="143" height="82" rx="6" fill="#1D4ED8" opacity=".9"/>
+      <text x="436" y="79" text-anchor="middle" font-size="10" font-weight="600" fill="white">GLPI Web App</text>
+      <text x="436" y="94" text-anchor="middle" font-size="8.5" fill="white" opacity=".8">PHP 8.2 · Apache</text>
+      <text x="436" y="109" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">API REST · UI · Regras</text>
+      <text x="436" y="122" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">Plugin Fields</text>
+      <rect x="528" y="58" width="128" height="62" rx="6" fill="#1E293B"/>
+      <ellipse cx="592" cy="58" rx="64" ry="10" fill="#334155"/>
+      <text x="592" y="100" text-anchor="middle" font-size="10" font-weight="600" fill="white">GLPI DB</text>
+      <text x="592" y="115" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">MariaDB</text>
+      <rect x="365" y="155" width="143" height="58" rx="6" fill="#1E293B"/>
+      <ellipse cx="436" cy="155" rx="71" ry="10" fill="#334155"/>
+      <text x="436" y="193" text-anchor="middle" font-size="10" font-weight="600" fill="white">Arquivos</text>
+      <text x="436" y="208" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">Volume 500 GB</text>
+      <rect x="365" y="240" width="86" height="48" rx="6" fill="#475569"/>
+      <text x="408" y="262" text-anchor="middle" font-size="10" font-weight="600" fill="white">LDAP</text>
+      <text x="408" y="277" text-anchor="middle" font-size="8" fill="white" opacity=".7">TCP 636</text>
+      <rect x="464" y="240" width="86" height="48" rx="6" fill="#475569"/>
+      <text x="507" y="262" text-anchor="middle" font-size="10" font-weight="600" fill="white">SMTP</text>
+      <text x="507" y="277" text-anchor="middle" font-size="8" fill="white" opacity=".7">TCP 587</text>
+      <rect x="18" y="300" width="295" height="48" rx="6" fill="#475569"/>
+      <text x="165" y="322" text-anchor="middle" font-size="10" font-weight="600" fill="white">Equipamentos do Datacenter</text>
+      <text x="165" y="338" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">Servidores · Switches · UPS · Sensores</text>
+      <rect x="700" y="78" width="128" height="42" rx="6" fill="#334155"/>
+      <text x="764" y="97" text-anchor="middle" font-size="10" font-weight="600" fill="white">Técnico / Gestor</text>
+      <text x="764" y="110" text-anchor="middle" font-size="8.5" fill="white" opacity=".7">HTTPS · rede interna</text>
+      <line x1="698" y1="99" x2="510" y2="88" stroke="#68768F" stroke-width="1.5" marker-end="url(#b1)"/>
+      <line x1="700" y1="108" x2="152" y2="87" stroke="#68768F" stroke-width="1.5" marker-end="url(#b1)"/>
+      <line x1="150" y1="166" x2="173" y2="138" stroke="#68768F" stroke-width="1.5" marker-end="url(#b1)"/>
+      <line x1="91" y1="116" x2="91" y2="298" stroke="#68768F" stroke-width="1.5" marker-end="url(#b1)"/>
+      <line x1="150" y1="174" x2="348" y2="88" stroke="#1D4ED8" stroke-width="2.5" marker-end="url(#b2)"/>
+      <rect x="185" y="105" width="122" height="24" rx="4" fill="#1D4ED8" opacity=".12"/>
+      <text x="246" y="120" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1D4ED8">Webhook JSON/HTTPS</text>
+      <line x1="508" y1="90" x2="526" y2="93" stroke="#68768F" stroke-width="1.5" marker-end="url(#b1)"/>
+      <line x1="436" y1="130" x2="436" y2="153" stroke="#68768F" stroke-width="1.5" marker-end="url(#b1)"/>
+      <line x1="408" y1="130" x2="408" y2="237" stroke="#057A55" stroke-width="1.5" marker-end="url(#b3)"/>
+      <line x1="453" y1="130" x2="507" y2="237" stroke="#057A55" stroke-width="1.5" marker-end="url(#b3)"/>
+      <line x1="350" y1="388" x2="385" y2="388" stroke="#1D4ED8" stroke-width="2.5"/>
+      <text x="394" y="392" font-size="9" fill="currentColor" font-weight="600">Webhook (integração principal)</text>
+      <line x1="555" y1="388" x2="590" y2="388" stroke="#68768F" stroke-width="1.5"/>
+      <text x="598" y="392" font-size="9" fill="currentColor">Comunicação interna</text>
+    </svg>
+  </div>
+
+  <h2 id="c4-n3">Nível 3 — Componentes do GLPI</h2>
+  <p>Módulos internos e o fluxo do webhook: API REST → Ticket Module → Rules Engine → Notification Engine.</p>
+  <div class="c4-wrap">
+    <div class="c4-lbl">C4 · N3 · Componentes · GLPI Web App</div>
+    <svg class="c4" viewBox="0 0 840 340" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="c1" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3z" fill="#68768F"/></marker>
+        <marker id="c2" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3z" fill="#1D4ED8"/></marker>
+        <marker id="c3" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3z" fill="#057A55"/></marker>
+      </defs>
+      <rect x="10" y="133" width="108" height="52" rx="6" fill="#475569"/>
+      <text x="64" y="155" text-anchor="middle" font-size="10" font-weight="600" fill="white">Zabbix Server</text>
+      <text x="64" y="170" text-anchor="middle" font-size="8" fill="white" opacity=".75">Webhook · JSON</text>
+      <rect x="10" y="55" width="108" height="48" rx="6" fill="#475569"/>
+      <text x="64" y="76" text-anchor="middle" font-size="10" font-weight="600" fill="white">Técnico de TI</text>
+      <text x="64" y="91" text-anchor="middle" font-size="8" fill="white" opacity=".75">Browser · HTTPS</text>
+      <rect x="153" y="115" width="112" height="75" rx="6" fill="#1E3A8A"/>
+      <text x="209" y="142" text-anchor="middle" font-size="10" font-weight="600" fill="white">API REST</text>
+      <text x="209" y="157" text-anchor="middle" font-size="8" fill="white" opacity=".8">GLPI API v2</text>
+      <text x="209" y="172" text-anchor="middle" font-size="8" fill="white" opacity=".7">initSession · POST /Ticket</text>
+      <text x="209" y="182" text-anchor="middle" font-size="8" fill="white" opacity=".7">PUT /Ticket/{id}</text>
+      <rect x="153" y="38" width="112" height="62" rx="6" fill="#1D4ED8" opacity=".9"/>
+      <text x="209" y="62" text-anchor="middle" font-size="10" font-weight="600" fill="white">Interface Web</text>
+      <text x="209" y="77" text-anchor="middle" font-size="8" fill="white" opacity=".8">PHP · Twig</text>
+      <text x="209" y="90" text-anchor="middle" font-size="8" fill="white" opacity=".7">Telas chamado · ativo</text>
+      <rect x="303" y="95" width="128" height="88" rx="6" fill="#1E3A8A"/>
+      <text x="367" y="122" text-anchor="middle" font-size="10" font-weight="600" fill="white">Ticket Module</text>
+      <text x="367" y="137" text-anchor="middle" font-size="8" fill="white" opacity=".8">Status · Prioridade</text>
+      <text x="367" y="151" text-anchor="middle" font-size="8" fill="white" opacity=".7">Tarefas · Solução</text>
+      <text x="367" y="165" text-anchor="middle" font-size="8" fill="white" opacity=".7">Auditoria imutável</text>
+      <text x="367" y="175" text-anchor="middle" font-size="7.5" fill="white" opacity=".6">Bloco 1,2,3,6</text>
+      <rect x="303" y="28" width="128" height="55" rx="6" fill="#1D4ED8" opacity=".9"/>
+      <text x="367" y="52" text-anchor="middle" font-size="10" font-weight="600" fill="white">Rules Engine</text>
+      <text x="367" y="67" text-anchor="middle" font-size="8" fill="white" opacity=".8">Categorização auto</text>
+      <text x="367" y="80" text-anchor="middle" font-size="8" fill="white" opacity=".7">Atribuição · Prioridade</text>
+      <rect x="303" y="202" width="128" height="58" rx="6" fill="#2E1065" opacity=".85"/>
+      <text x="367" y="227" text-anchor="middle" font-size="10" font-weight="600" fill="white">Plugin Fields</text>
+      <text x="367" y="242" text-anchor="middle" font-size="8" fill="white" opacity=".8">Chamado fornecedor</text>
+      <text x="367" y="255" text-anchor="middle" font-size="8" fill="white" opacity=".7">Executor · Origem peça</text>
+      <rect x="470" y="28" width="118" height="62" rx="6" fill="#1D4ED8" opacity=".85"/>
+      <text x="529" y="55" text-anchor="middle" font-size="10" font-weight="600" fill="white">Asset Module</text>
+      <text x="529" y="70" text-anchor="middle" font-size="8" fill="white" opacity=".8">Rack · U · IP · S/N</text>
+      <text x="529" y="83" text-anchor="middle" font-size="8" fill="white" opacity=".7">Garantia · Bloco 4,7</text>
+      <rect x="470" y="108" width="118" height="62" rx="6" fill="#1D4ED8" opacity=".85"/>
+      <text x="529" y="135" text-anchor="middle" font-size="10" font-weight="600" fill="white">Document Module</text>
+      <text x="529" y="150" text-anchor="middle" font-size="8" fill="white" opacity=".8">Fotos antes/depois</text>
+      <text x="529" y="163" text-anchor="middle" font-size="8" fill="white" opacity=".7">→ Volume disco</text>
+      <rect x="470" y="193" width="118" height="62" rx="6" fill="#1D4ED8" opacity=".85"/>
+      <text x="529" y="220" text-anchor="middle" font-size="10" font-weight="600" fill="white">Problem Module</text>
+      <text x="529" y="235" text-anchor="middle" font-size="8" fill="white" opacity=".8">Causa raiz ITIL</text>
+      <text x="529" y="248" text-anchor="middle" font-size="8" fill="white" opacity=".7">Ação preventiva</text>
+      <rect x="620" y="95" width="118" height="62" rx="6" fill="#064E3B" opacity=".85"/>
+      <text x="679" y="122" text-anchor="middle" font-size="10" font-weight="600" fill="white">Notification Engine</text>
+      <text x="679" y="137" text-anchor="middle" font-size="8" fill="white" opacity=".8">E-mail · Cron</text>
+      <text x="679" y="150" text-anchor="middle" font-size="8" fill="white" opacity=".7">→ SMTP institucional</text>
+      <rect x="620" y="188" width="118" height="52" rx="6" fill="#1E293B"/>
+      <ellipse cx="679" cy="188" rx="59" ry="10" fill="#334155"/>
+      <text x="679" y="226" text-anchor="middle" font-size="10" font-weight="600" fill="white">MariaDB</text>
+      <text x="679" y="240" text-anchor="middle" font-size="8" fill="white" opacity=".7">Tickets · Ativos · Logs</text>
+      <line x1="118" y1="158" x2="151" y2="155" stroke="#1D4ED8" stroke-width="2" marker-end="url(#c2)"/>
+      <line x1="118" y1="79" x2="151" y2="76" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="265" y1="152" x2="301" y2="143" stroke="#1D4ED8" stroke-width="2" marker-end="url(#c2)"/>
+      <line x1="265" y1="68" x2="301" y2="57" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="209" y1="100" x2="209" y2="113" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="367" y1="83" x2="367" y2="93" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="367" y1="183" x2="367" y2="200" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="431" y1="58" x2="468" y2="58" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="431" y1="138" x2="468" y2="140" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="431" y1="170" x2="468" y2="222" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="588" y1="140" x2="618" y2="132" stroke="#057A55" stroke-width="1.5" marker-end="url(#c3)"/>
+      <line x1="679" y1="157" x2="679" y2="185" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+      <line x1="431" y1="125" x2="618" y2="222" stroke="#68768F" stroke-width="1.5" marker-end="url(#c1)"/>
+    </svg>
+  </div>
+
+  <h2 id="c4-n4">Nível 4 — Sequência de código (fluxo crítico)</h2>
+  <p>O caminho de cada linha quando o Zabbix detecta a falha do SRV-023. Qualquer quebra aqui = chamado não registrado.</p>
+  <div class="c4-wrap">
+    <div class="c4-lbl">C4 · N4 · Sequência · Trigger PROBLEM → GLPI Ticket criado</div>
+    <svg class="c4" viewBox="0 0 800 410" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="d1" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#1D4ED8"/></marker>
+        <marker id="d2" markerWidth="7" markerHeight="7" refX="2" refY="3" orient="auto"><path d="M7,0 L7,6 L0,3z" fill="#057A55"/></marker>
+        <marker id="d3" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#057A55"/></marker>
+      </defs>
+      <text x="65"  y="26" text-anchor="middle" font-size="9.5" font-weight="600" fill="currentColor">Trigger Engine</text>
+      <text x="200" y="26" text-anchor="middle" font-size="9.5" font-weight="600" fill="currentColor">Action Manager</text>
+      <text x="350" y="26" text-anchor="middle" font-size="9.5" font-weight="600" fill="currentColor">glpi_webhook.js</text>
+      <text x="510" y="26" text-anchor="middle" font-size="9.5" font-weight="600" fill="currentColor">GLPI API REST</text>
+      <text x="670" y="26" text-anchor="middle" font-size="9.5" font-weight="600" fill="currentColor">MariaDB</text>
+      <line x1="65"  y1="32" x2="65"  y2="390" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="200" y1="32" x2="200" y2="390" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="350" y1="32" x2="350" y2="390" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="510" y1="32" x2="510" y2="390" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="670" y1="32" x2="670" y2="390" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <rect x="25" y="48" width="80" height="19" rx="3" fill="#1D4ED8"/>
+      <text x="65" y="61" text-anchor="middle" font-size="8.5" fill="white">PROBLEM event</text>
+      <line x1="105" y1="57" x2="192" y2="57" stroke="#1D4ED8" stroke-width="1.5" marker-end="url(#d1)"/>
+      <text x="148" y="52" text-anchor="middle" font-size="8" fill="#1D4ED8">1. avalia condição</text>
+      <rect x="160" y="74" width="80" height="19" rx="3" fill="#1D4ED8"/>
+      <text x="200" y="87" text-anchor="middle" font-size="8.5" fill="white">selec. ação</text>
+      <line x1="240" y1="83" x2="342" y2="83" stroke="#1D4ED8" stroke-width="1.5" marker-end="url(#d1)"/>
+      <text x="291" y="78" text-anchor="middle" font-size="8" fill="#1D4ED8">2. exec. media type JS</text>
+      <rect x="310" y="100" width="80" height="19" rx="3" fill="#334155"/>
+      <text x="350" y="113" text-anchor="middle" font-size="8.5" fill="white">initSession()</text>
+      <line x1="390" y1="109" x2="503" y2="109" stroke="#1D4ED8" stroke-width="1.5" marker-end="url(#d1)"/>
+      <text x="446" y="104" text-anchor="middle" font-size="8" fill="#1D4ED8">3. GET /initSession</text>
+      <line x1="503" y1="124" x2="390" y2="124" stroke="#057A55" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#d2)"/>
+      <text x="446" y="119" text-anchor="middle" font-size="8" fill="#057A55">session_token</text>
+      <rect x="310" y="140" width="80" height="19" rx="3" fill="#334155"/>
+      <text x="350" y="153" text-anchor="middle" font-size="8.5" fill="white">createTicket()</text>
+      <line x1="390" y1="149" x2="503" y2="149" stroke="#1D4ED8" stroke-width="1.5" marker-end="url(#d1)"/>
+      <text x="446" y="144" text-anchor="middle" font-size="8" fill="#1D4ED8">4. POST /Ticket + JSON</text>
+      <rect x="472" y="167" width="76" height="15" rx="3" fill="#1E3A8A"/>
+      <text x="510" y="178" text-anchor="middle" font-size="8" fill="white">Rules Engine</text>
+      <line x1="548" y1="175" x2="663" y2="175" stroke="#68768F" stroke-width="1.5" marker-end="url(#d3)"/>
+      <text x="605" y="170" text-anchor="middle" font-size="8" fill="#68768F">5. INSERT ticket</text>
+      <line x1="663" y1="188" x2="548" y2="188" stroke="#057A55" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#d2)"/>
+      <text x="605" y="183" text-anchor="middle" font-size="8" fill="#057A55">ticket_id: 42</text>
+      <line x1="503" y1="204" x2="390" y2="204" stroke="#057A55" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#d2)"/>
+      <text x="446" y="199" text-anchor="middle" font-size="8" fill="#057A55">201 Created · {id:42}</text>
+      <line x1="390" y1="220" x2="503" y2="220" stroke="#1D4ED8" stroke-width="1.5" marker-end="url(#d1)"/>
+      <text x="446" y="215" text-anchor="middle" font-size="8" fill="#1D4ED8">6. GET /killSession</text>
+      <rect x="10" y="240" width="375" height="13" rx="3" fill="var(--bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="197" y="251" text-anchor="middle" font-size="8" fill="var(--muted)">── Fluxo de recuperação (trigger volta a OK) ──</text>
+      <rect x="25" y="263" width="80" height="19" rx="3" fill="#057A55"/>
+      <text x="65" y="276" text-anchor="middle" font-size="8.5" fill="white">OK event</text>
+      <line x1="105" y1="272" x2="192" y2="272" stroke="#057A55" stroke-width="1.5" marker-end="url(#d3)"/>
+      <line x1="240" y1="272" x2="342" y2="272" stroke="#057A55" stroke-width="1.5" marker-end="url(#d3)"/>
+      <text x="291" y="267" text-anchor="middle" font-size="8" fill="#057A55">7. recovery action</text>
+      <line x1="390" y1="290" x2="503" y2="290" stroke="#057A55" stroke-width="1.5" marker-end="url(#d3)"/>
+      <text x="446" y="285" text-anchor="middle" font-size="8" fill="#057A55">8. PUT /Ticket/42 status=5</text>
+      <line x1="548" y1="305" x2="663" y2="305" stroke="#68768F" stroke-width="1.5" marker-end="url(#d3)"/>
+      <text x="605" y="300" text-anchor="middle" font-size="8" fill="#68768F">UPDATE ticket</text>
+      <rect x="310" y="330" width="215" height="42" rx="5" fill="var(--red-soft)" stroke="var(--red)" stroke-width="1"/>
+      <text x="417" y="348" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--red)">Retry em falha 5xx / timeout</text>
+      <text x="417" y="362" text-anchor="middle" font-size="8" fill="var(--red)">3 tentativas × 60 s → alerta ops</text>
+    </svg>
+  </div>
+
+  <h2 id="c4-roadmap">Roadmap de fases</h2>
+  <div class="roadmap">
+    <div class="rm-card">
+      <div class="rm-badge rm-mvp">MVP · Fase 1</div>
+      <div class="rm-title">~4 semanas</div>
+      <div class="rm-item">✅ VM-ZABBIX provisionada<br>✅ Detecção automática<br>✅ Webhook Zabbix → GLPI<br>✅ Chamados + ativos + peças + fotos<br>✅ Categorização + notificações<br>✅ Relatórios + MTTR<br>✅ LDAP + RBAC + firewall<br>✅ Backup diário automatizado</div>
+    </div>
+    <div class="rm-card">
+      <div class="rm-badge rm-f2">Fase 2 · NetBox</div>
+      <div class="rm-title">Após MVP estável</div>
+      <div class="rm-item">📦 Localização rack/U automática<br>📦 Auto-discovery Zabbix via NetBox<br>📦 Inventário único sem duplicação<br>📦 Mapa de datacenter com histórico<br><br><em style="font-size:11px;color:var(--muted)">Pré-req: cadastro completo do NetBox</em></div>
+    </div>
+    <div class="rm-card">
+      <div class="rm-badge rm-f3">Fase 3 · IA</div>
+      <div class="rm-title">A definir</div>
+      <div class="rm-item">🤖 Causa raiz sugerida (Ollama local)<br>🤖 Busca em linguagem natural<br>🤖 Resumo semanal automático<br>🤖 Correlação de eventos Zabbix<br><br><em style="font-size:11px;color:var(--muted)">Pré-req: decisão LLM local vs. externo</em></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ PAINEL 6: BACKLOG ══════════ -->
+<div class="panel" id="panel-backlog">
+  <div class="cover-tag">Épicos e Histórias de Usuário</div>
+  <h1>Backlog · 9 Épicos · 38 Histórias</h1>
+
+  <div class="cards">
+    <div class="card"><div class="card-label">Total histórias</div><div class="card-val">38</div><div class="card-sub">9 épicos</div></div>
+    <div class="card"><div class="card-label">MVP (Fase 1)</div><div class="card-val">28</div><div class="card-sub">E1–E7</div></div>
+    <div class="card"><div class="card-label">Fase 2</div><div class="card-val">5</div><div class="card-sub">E8 · NetBox</div></div>
+    <div class="card"><div class="card-label">Fase 3</div><div class="card-val">5</div><div class="card-sub">E9 · IA</div></div>
+    <div class="card"><div class="card-label">P1 · Crítico</div><div class="card-val">10</div><div class="card-sub">gate do MVP</div></div>
+  </div>
+  <div class="callout info">Gate MVP: E1 (Infra) e E7 (Segurança) são pré-requisitos de tudo. Sprint 0: E1 + E7. Sprint 1: E2 + E3.</div>
+
+  <h2 id="bl-e1">E1 · Infraestrutura e deploy <span class="tag tok" style="font-size:9px;margin-left:.4rem">MVP · P1</span></h2>
+  <div class="tw"><table>
+    <thead><tr><th>ID</th><th>História</th><th>Critérios de aceitação</th><th>Prio</th></tr></thead>
+    <tbody>
+      <tr><td>E1-US01</td><td>Como ops, quero provisionar VM-ZABBIX com Ansible</td><td>Playbook idempotente; Zabbix Server e Frontend em HTTPS; PostgreSQL rodando</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E1-US02</td><td>Como ops, quero provisionar VM-GLPI com Ansible</td><td>GLPI em HTTPS; MariaDB rodando; Plugin Fields instalado</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E1-US03</td><td>Como ops, quero firewall configurado via Ansible</td><td>Internet bloqueada; portas 443, 636, 587, 161 abertas conforme tabela de RNF</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E1-US04</td><td>Como ops, quero backup automatizado diário (RTO 4h / RPO 24h)</td><td>Cron 02h; dump MariaDB + PostgreSQL; rsync anexos; cópia off-site; alerta em falha</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E1-US05</td><td>Como ops, quero que o Zabbix monitore a VM-GLPI</td><td>Web scenario 60s; trigger se API não responder em 30s; alerta ao plantão</td><td><span class="tag twarn">P2</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="bl-e2">E2 · Detecção automática de chamados <span class="tag tok" style="font-size:9px;margin-left:.4rem">MVP · P1</span></h2>
+  <div class="tw"><table>
+    <thead><tr><th>ID</th><th>História</th><th>Critérios de aceitação</th><th>Prio</th></tr></thead>
+    <tbody>
+      <tr><td>E2-US01</td><td>Como técnico, quero chamado aberto em &lt; 5 s após trigger disparar</td><td>POST webhook &lt; 5s; chamado com host, severidade e timestamp do evento</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E2-US02</td><td>Como técnico, quero chamado atualizado automaticamente na recuperação</td><td>PUT com status e timestamp de recuperação &lt; 30s</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E2-US03</td><td>Como ops, quero que o webhook retentar até 3 vezes em falha</td><td>3 tentativas × 60s; log de cada; alerta ao técnico se todas falharem</td><td><span class="tag twarn">P2</span></td></tr>
+      <tr><td>E2-US04</td><td>Como técnico, quero configurar quais triggers abrem chamados</td><td>Filtro por severidade e grupo de hosts no script; documentado no runbook</td><td><span class="tag twarn">P2</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="bl-e3">E3 · Registro de chamados <span class="tag tok" style="font-size:9px;margin-left:.4rem">MVP · P1</span></h2>
+  <div class="tw"><table>
+    <thead><tr><th>ID</th><th>História</th><th>Critérios de aceitação</th><th>Prio</th></tr></thead>
+    <tbody>
+      <tr><td>E3-US01</td><td>Como técnico, quero registrar diagnóstico no chamado</td><td>Obrigatório antes de marcar como resolvido; gravado com usuário e timestamp</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E3-US02</td><td>Como técnico, quero registrar peças trocadas (modelo, S/N, origem)</td><td>Ativo vinculado ao chamado; campos via Plugin Fields</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E3-US03</td><td>Como técnico, quero anexar fotos antes/depois</td><td>Upload múltiplo; categoria antes/depois; salvo no volume de disco</td><td><span class="tag terr">P1</span></td></tr>
+      <tr><td>E3-US04</td><td>Como técnico, quero registrar causa raiz e vincular a um Problema ITIL</td><td>Campo causa raiz; opção criar/vincular problema; campo ação preventiva</td><td><span class="tag twarn">P2</span></td></tr>
+      <tr><td>E3-US05</td><td>Como técnico, quero registrar chamado do fornecedor (garantia)</td><td>Campo via Plugin Fields; visível no resumo do chamado</td><td><span class="tag twarn">P2</span></td></tr>
+      <tr><td>E3-US06</td><td>Como técnico, quero ver histórico completo de alterações</td><td>Log com usuário, campo e timestamp; não editável</td><td><span class="tag tinfo">P3</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="bl-e4e5">E4 · Ativos &nbsp;&nbsp; E5 · Notificações &nbsp;&nbsp; E6 · Relatórios &nbsp;&nbsp; E7 · Segurança</h2>
+  <div class="tw"><table>
+    <thead><tr><th>ID</th><th>Épico</th><th>História (resumo)</th><th>Prio</th><th>Fase</th></tr></thead>
+    <tbody>
+      <tr><td>E4-US01</td><td>Ativos</td><td>Cadastrar equipamento com rack, U, IP e S/N</td><td><span class="tag twarn">P2</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E4-US02</td><td>Ativos</td><td>Registrar fim de garantia e contrato de suporte</td><td><span class="tag twarn">P2</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E4-US03</td><td>Ativos</td><td>Ver histórico de incidentes por equipamento</td><td><span class="tag tinfo">P3</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E5-US01</td><td>Notificações</td><td>Categorização automática pelo tipo de trigger</td><td><span class="tag twarn">P2</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E5-US02</td><td>Notificações</td><td>E-mail ao plantão &lt; 1 min para chamados alta prioridade</td><td><span class="tag twarn">P2</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E5-US03</td><td>Notificações</td><td>E-mail diário de resumo para o gestor (08h)</td><td><span class="tag tinfo">P3</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E6-US01</td><td>Relatórios</td><td>MTTR por categoria, exportável em CSV</td><td><span class="tag tinfo">P3</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E6-US02</td><td>Relatórios</td><td>Ranking de ativos com mais incidentes (top 10)</td><td><span class="tag tinfo">P3</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E6-US03</td><td>Relatórios</td><td>Peças mais trocadas e origem (estoque/garantia/compra)</td><td><span class="tag tinfo">P3</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E7-US01</td><td>Segurança</td><td>Login GLPI via LDAP institucional (LDAPS)</td><td><span class="tag terr">P1</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E7-US02</td><td>Segurança</td><td>Perfis Técnico / Gestor / Somente-leitura mapeados a grupos LDAP</td><td><span class="tag terr">P1</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E7-US03</td><td>Segurança</td><td>Credenciais de serviço em variáveis de ambiente (fora do Git)</td><td><span class="tag terr">P1</span></td><td><span class="tag tok">MVP</span></td></tr>
+      <tr><td>E8-US01</td><td>NetBox</td><td>GLPI importa rack/U do NetBox diariamente</td><td><span class="tag twarn">P2</span></td><td><span class="tag twarn">F2</span></td></tr>
+      <tr><td>E8-US02</td><td>NetBox</td><td>Zabbix recebe lista de hosts do NetBox a cada 6h</td><td><span class="tag twarn">P2</span></td><td><span class="tag twarn">F2</span></td></tr>
+      <tr><td>E9-US01</td><td>IA</td><td>Sugestão de causa raiz via Ollama local</td><td><span class="tag tinfo">P3</span></td><td><span class="tag tpur">F3</span></td></tr>
+      <tr><td>E9-US02</td><td>IA</td><td>Busca em linguagem natural no histórico</td><td><span class="tag tinfo">P3</span></td><td><span class="tag tpur">F3</span></td></tr>
+      <tr><td>E9-US05</td><td>IA</td><td>Configurar Ollama local vs. provedor externo com aval</td><td><span class="tag twarn">P2</span></td><td><span class="tag tpur">F3</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ══════════ PAINEL 7: IMPLEMENTAÇÃO ══════════ -->
+<div class="panel" id="panel-impl">
+  <div class="cover-tag">Guia de Implementação</div>
+  <h1>Implementação passo a passo</h1>
+
+  <div class="callout err">Antes de qualquer passo: tirar snapshot da VM-GLPI no Proxmox. Qualquer erro de configuração pode corromper dados existentes.</div>
+
+  <h2 id="im-ordem">Ordem de execução</h2>
+  <div class="steps">
+    <div class="step"><div class="step-n">1</div><div class="step-b"><div class="step-t">Snapshot da VM-GLPI no Proxmox</div>Proxmox UI → VM-GLPI → Snapshots → Take Snapshot. Nomeie com a data: <code>pre-zabbix-20261017</code>.</div></div>
+    <div class="step"><div class="step-n">2</div><div class="step-b"><div class="step-t">Criar VM-ZABBIX no Proxmox</div><code>qm create 201 --name vm-zabbix --memory 8192 --cores 4 --net0 virtio,bridge=vmbr0</code><br>Adicionar disco 100 GB SSD + ISO Ubuntu 22.04 → iniciar para instalação.</div></div>
+    <div class="step"><div class="step-n">3</div><div class="step-b"><div class="step-t">Configurar inventário e variáveis Ansible</div>Editar <code>ansible/inventory/hosts.ini</code> com IPs reais. Criptografar senhas: <code>ansible-vault encrypt_string 'senha' --name 'var'</code>.</div></div>
+    <div class="step"><div class="step-n">4</div><div class="step-b"><div class="step-t">Rodar playbook de instalação do Zabbix</div><code>ansible-playbook site.yml --tags zabbix,firewall,backup --ask-vault-pass</code><br>Aguardar conclusão (~15 min). Verificar Zabbix Frontend em HTTPS.</div></div>
+    <div class="step"><div class="step-n">5</div><div class="step-b"><div class="step-t">Criar usuário de serviço no GLPI</div>Rodar <code>scripts/glpi_setup_service_user.sh</code>. Copiar o <code>user_token</code> retornado para o <code>group_vars/all.yml</code> (via vault).</div></div>
+    <div class="step"><div class="step-n">6</div><div class="step-b"><div class="step-t">Configurar Media Type GLPI no Zabbix</div>Rodar <code>scripts/setup_zabbix_mediatype.py</code> com as variáveis de ambiente. Verificar em Zabbix → Administration → Media Types → GLPI Webhook.</div></div>
+    <div class="step"><div class="step-n">7</div><div class="step-b"><div class="step-t">Criar regras de categorização no GLPI</div>Rodar <code>scripts/glpi_setup_rules.py</code>. 9 regras criadas: Hardware/Fonte, Rede/Interface, Performance/CPU, Ambiente/Temperatura, etc.</div></div>
+    <div class="step"><div class="step-n">8</div><div class="step-b"><div class="step-t">Configurar Plugin Fields no GLPI</div>GLPI UI → Setup → Plugins → Fields → criar campos: "Chamado do fornecedor", "Executor", "Origem da peça" vinculados ao tipo Chamado.</div></div>
+    <div class="step"><div class="step-n">9</div><div class="step-b"><div class="step-t">Validar webhook com chamado de teste</div>Zabbix → Configuration → Actions → criar action de teste com trigger falsa. Confirmar chamado criado no GLPI em &lt; 5s. Ver log: <code>grep -i webhook /var/log/zabbix/zabbix_server.log | tail -20</code>.</div></div>
+    <div class="step"><div class="step-n">10</div><div class="step-b"><div class="step-t">Configurar monitor da VM-GLPI no Zabbix</div>Rodar <code>scripts/zabbix_setup_glpi_monitor.py</code>. Web scenario criado: verifica API a cada 60s; trigger se GLPI não responder em 30s.</div></div>
+  </div>
+
+  <h2 id="im-webhook">Script do webhook</h2>
+  <p>O webhook é um Media Type JavaScript configurado dentro do próprio Zabbix. Não precisa de servidor externo.</p>
+  <div class="file-block">
+    <div class="file-hdr"><span class="tag tpur">javascript</span><span class="file-path">ansible/roles/zabbix/files/glpi_webhook.js (trecho essencial)</span><button class="copy-btn" onclick="copyCode(this)">copiar</button></div>
+    <pre><span class="c-cm">// Mapeamento severidade Zabbix → prioridade GLPI</span>
+<span class="c-cm">// Zabbix: 0=Not class 1=Info 2=Warning 3=Average 4=High 5=Disaster</span>
+<span class="c-cm">// GLPI:   1=Very low 2=Low 3=Medium 4=High 5=Very high 6=Major</span>
+<span class="c-kw">var</span> SEV_MAP = {<span class="c-s">'0'</span>:<span class="c-v">1</span>, <span class="c-s">'1'</span>:<span class="c-v">2</span>, <span class="c-s">'2'</span>:<span class="c-v">3</span>, <span class="c-s">'3'</span>:<span class="c-v">3</span>, <span class="c-s">'4'</span>:<span class="c-v">5</span>, <span class="c-s">'5'</span>:<span class="c-v">6</span>};
+
+<span class="c-kw">if</span> (params.event_value === <span class="c-s">'1'</span>) {
+  <span class="c-cm">// PROBLEM — abrir chamado</span>
+  <span class="c-kw">var</span> ticket = GLPI.request(<span class="c-s">'POST'</span>, <span class="c-s">'/Ticket'</span>, {
+    <span class="c-s">'input'</span>: {
+      <span class="c-s">'name'</span>: <span class="c-s">'[Zabbix] '</span> + params.trigger_name + <span class="c-s">' — '</span> + params.host_name,
+      <span class="c-s">'content'</span>: <span class="c-s">'Host: '</span> + params.host_name + <span class="c-s">'\nTrigger: '</span> + params.trigger_name +
+                 <span class="c-s">'\nSeveridade: '</span> + params.trigger_sev +
+                 <span class="c-s">'\nInício: '</span> + params.event_date + <span class="c-s">' '</span> + params.event_time,
+      <span class="c-s">'priority'</span>: SEV_MAP[params.trigger_sev] || <span class="c-v">3</span>,
+      <span class="c-s">'type'</span>: <span class="c-v">1</span>, <span class="c-s">'status'</span>: <span class="c-v">1</span>
+    }
+  });
+  <span class="c-kw">return</span> JSON.stringify({ticket_id: ticket.id});
+} <span class="c-kw">else</span> {
+  <span class="c-cm">// RECOVERY — atualizar chamado com horário de fim</span>
+  GLPI.request(<span class="c-s">'PUT'</span>, <span class="c-s">'/Ticket/'</span> + params.glpi_ticket_id, {
+    <span class="c-s">'input'</span>: {
+      <span class="c-s">'status'</span>: <span class="c-v">5</span>,
+      <span class="c-s">'solution'</span>: <span class="c-s">'Recuperação automática pelo Zabbix em '</span> +
+                  params.event_date + <span class="c-s">' '</span> + params.event_time
+    }
+  });
+}</pre>
+  </div>
+
+  <h2 id="im-ansible">Playbook Ansible (Zabbix)</h2>
+  <div class="file-block">
+    <div class="file-hdr"><span class="tag twarn">yaml</span><span class="file-path">ansible/roles/zabbix/tasks/main.yml (resumo)</span><button class="copy-btn" onclick="copyCode(this)">copiar</button></div>
+    <pre><span class="c-cm">---</span>
+- <span class="c-k">name</span>: <span class="c-s">Adicionar repositório Zabbix 7.0</span>
+  <span class="c-k">apt</span>: <span class="c-k">deb</span>: <span class="c-s">"https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_7.0-2+ubuntu22.04_all.deb"</span>
+
+- <span class="c-k">name</span>: <span class="c-s">Instalar Zabbix + PostgreSQL</span>
+  <span class="c-k">apt</span>:
+    <span class="c-k">name</span>: [zabbix-server-pgsql, zabbix-frontend-php, zabbix-nginx-conf, zabbix-sql-scripts, zabbix-agent2, postgresql]
+    <span class="c-k">state</span>: present
+
+- <span class="c-k">name</span>: <span class="c-s">Criar banco e usuário PostgreSQL</span>
+  <span class="c-k">become_user</span>: postgres
+  <span class="c-k">postgresql_db</span>: <span class="c-k">name</span>: <span class="c-s">"{{ zabbix_db_name }}"</span>
+
+- <span class="c-k">name</span>: <span class="c-s">Importar schema inicial</span>
+  <span class="c-k">shell</span>: zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz | psql -U {{ zabbix_db_user }} {{ zabbix_db_name }}
+  <span class="c-k">become_user</span>: postgres
+
+- <span class="c-k">name</span>: <span class="c-s">Habilitar serviços</span>
+  <span class="c-k">systemd</span>: <span class="c-k">name</span>: <span class="c-s">"{{ item }}"</span> <span class="c-k">enabled</span>: <span class="c-v">yes</span> <span class="c-k">state</span>: started
+  <span class="c-k">loop</span>: [zabbix-server, zabbix-agent2, nginx, php8.1-fpm]</pre>
+  </div>
+
+  <h2 id="im-estrutura">Estrutura do repositório Git</h2>
+  <div class="file-block">
+    <div class="file-hdr"><span class="tag" style="background:var(--bg);color:var(--muted);border:1px solid var(--border)">tree</span><span class="file-path">datacenter/ (repositório Git)</span></div>
+    <pre>datacenter/
+├── ansible/
+│   ├── inventory/hosts.ini
+│   ├── group_vars/all.yml          <span class="c-cm"># senhas via ansible-vault</span>
+│   ├── roles/
+│   │   ├── zabbix/tasks/main.yml
+│   │   ├── zabbix/templates/zabbix_server.conf.j2
+│   │   ├── zabbix/files/glpi_webhook.js
+│   │   ├── firewall/tasks/main.yml
+│   │   └── backup/files/backup_glpi.sh
+│   └── site.yml
+├── scripts/
+│   ├── setup_zabbix_mediatype.py
+│   ├── glpi_setup_service_user.sh
+│   ├── glpi_setup_rules.py
+│   └── zabbix_setup_glpi_monitor.py
+├── docs/
+│   ├── workspace.dsl              <span class="c-cm"># C4 Structurizr DSL</span>
+│   └── runbook.md
+└── .gitignore                     <span class="c-cm"># vault_pass.txt, *.env</span></pre>
+  </div>
+</div>
+
+<!-- ══════════ PAINEL 8: RUNBOOK ══════════ -->
+<div class="panel" id="panel-runbook">
+  <div class="cover-tag">Operação e Manutenção</div>
+  <h1>Runbook</h1>
+
+  <h2 id="rb-validar">Validar webhook após deploy</h2>
+  <div class="steps">
+    <div class="step"><div class="step-n">1</div><div class="step-b"><div class="step-t">Criar trigger de teste no Zabbix</div>Zabbix → Configuration → Hosts → VM-GLPI → Triggers → criar trigger com condição impossível (ex: <code>uptime &gt; 999999</code>) para forçar disparo.</div></div>
+    <div class="step"><div class="step-n">2</div><div class="step-b"><div class="step-t">Verificar log do Zabbix Server</div><code>grep -i "glpi\|webhook\|mediatype" /var/log/zabbix/zabbix_server.log | tail -30</code><br>Procurar por "ticket_id" no retorno do script JS.</div></div>
+    <div class="step"><div class="step-n">3</div><div class="step-b"><div class="step-t">Confirmar chamado no GLPI</div>GLPI → Assistance → Tickets → filtrar por "Zabbix". Verificar: nome do equipamento, severidade e timestamp corretos.</div></div>
+    <div class="step"><div class="step-n">4</div><div class="step-b"><div class="step-t">Testar recuperação</div>Remover a trigger de teste → verificar que o chamado foi atualizado com status "Resolvido" e horário de fim.</div></div>
+  </div>
+
+  <h2 id="rb-falha">Webhook não está criando chamados</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Verificação</th><th>Comando / onde verificar</th><th>Ação se falhar</th></tr></thead>
+    <tbody>
+      <tr><td>GLPI API responde</td><td><code>curl -k https://glpi.intra/apirest.php</code></td><td>Reiniciar Apache: <code>systemctl restart apache2</code></td></tr>
+      <tr><td>Porta 443 aberta VM-ZABBIX → VM-GLPI</td><td><code>nc -zv 192.168.10.200 443</code> (da VM-ZABBIX)</td><td>Verificar regra UFW: <code>ufw status verbose</code></td></tr>
+      <tr><td>Usuário de serviço ativo no GLPI</td><td>GLPI → Admin → Usuários → zabbix-api → ativo = sim</td><td>Reativar e regenerar token</td></tr>
+      <tr><td>App-Token válido</td><td>GLPI → Setup → General → API → verificar token</td><td>Regenerar e atualizar <code>group_vars/all.yml</code></td></tr>
+      <tr><td>Log do Media Type</td><td>Zabbix → Administration → Media Types → GLPI Webhook → Test</td><td>Ver mensagem de erro; corrigir parâmetro</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2 id="rb-backup">Verificar backup</h2>
+  <div class="file-block">
+    <div class="file-hdr"><span class="tag tinfo">bash</span><button class="copy-btn" onclick="copyCode(this)">copiar</button></div>
+    <pre><span class="c-cm"># Verificar último backup GLPI</span>
+ls -lh /mnt/backup/datacenter/glpi/ | tail -5
+
+<span class="c-cm"># Checar tamanho do dump (abaixo de 100 KB = possível falha)</span>
+du -sh /mnt/backup/datacenter/glpi/$(ls -t /mnt/backup/datacenter/glpi | head -1)/glpi_db.sql.gz
+
+<span class="c-cm"># Ver log de backup</span>
+journalctl -t backup_glpi | tail -20</pre>
+  </div>
+
+  <h2 id="rb-restore">Restaurar GLPI após falha grave</h2>
+  <div class="file-block">
+    <div class="file-hdr"><span class="tag tinfo">bash</span><button class="copy-btn" onclick="copyCode(this)">copiar</button></div>
+    <pre><span class="c-cm"># 1. Parar Apache</span>
+systemctl stop apache2
+
+<span class="c-cm"># 2. Restaurar banco (ajustar data do backup)</span>
+BACKUP=<span class="c-s">"20261017_020001"</span>
+zcat /mnt/backup/datacenter/glpi/$BACKUP/glpi_db.sql.gz | mysql glpi
+
+<span class="c-cm"># 3. Restaurar arquivos</span>
+rsync -a --delete /mnt/backup/datacenter/glpi/$BACKUP/files/ /var/lib/glpi/files/
+chown -R www-data:www-data /var/lib/glpi/
+
+<span class="c-cm"># 4. Reiniciar e verificar</span>
+systemctl start apache2
+curl -sk https://glpi.intra/apirest.php | grep -c session</pre>
+  </div>
+
+  <h2 id="rb-update">Atualizar GLPI ou Zabbix</h2>
+  <div class="steps">
+    <div class="step"><div class="step-n">1</div><div class="step-b"><div class="step-t">Snapshot da VM no Proxmox antes de qualquer atualização</div><code>qm snapshot &lt;VMID&gt; pre-update-$(date +%Y%m%d)</code></div></div>
+    <div class="step"><div class="step-n">2</div><div class="step-b"><div class="step-t">Seguir upgrade guide oficial da ferramenta</div>GLPI: <code>php bin/console glpi:migration:*</code> após atualizar arquivos. Zabbix: parar server, atualizar pacotes, rodar scripts de migração de DB.</div></div>
+    <div class="step"><div class="step-n">3</div><div class="step-b"><div class="step-t">Testar webhook após atualização</div>Rodar o procedimento "Validar webhook após deploy" acima. Se o Plugin Fields quebrar, reverter para o snapshot.</div></div>
+    <div class="step"><div class="step-n">4</div><div class="step-b"><div class="step-t">Atualizar workspace.dsl se a arquitetura mudou</div>Commitar no Git com a versão nova das ferramentas documentada.</div></div>
+  </div>
+
+  <h2 id="rb-monit">Alertas do Zabbix — o que fazer</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Alerta</th><th>Causa provável</th><th>Ação imediata</th></tr></thead>
+    <tbody>
+      <tr><td>GLPI API indisponível (&gt; 30s)</td><td>Apache caiu ou MariaDB travou</td><td><code>systemctl status apache2 mariadb</code> → reiniciar o que falhou</td></tr>
+      <tr><td>Volume de anexos &gt; 80%</td><td>Crescimento de fotos</td><td>Avaliar limpeza de anexos antigos ou migração para MinIO (ADR-04)</td></tr>
+      <tr><td>Backup falhou</td><td>Disco cheio ou NAS off-site inacessível</td><td>Verificar espaço em disco; checar montagem do NAS</td></tr>
+      <tr><td>Zabbix lag &gt; 30s</td><td>Muitos hosts ou VM-ZABBIX com CPU saturada</td><td>Aumentar <code>StartPollers</code> no <code>zabbix_server.conf</code> ou adicionar vCPU</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+</main>
+</div><!-- /shell -->
+
+<script>
+// ── PANELS ──
+var PANELS = ['negocio','requisitos','restricoes','arquitetura','c4','backlog','impl','runbook'];
+var SIDEBARDATA = {
+  negocio: [
+    {id:'n-problema',label:'Problema'},
+    {id:'n-objetivos',label:'Objetivos de negócio'},
+    {id:'n-dominio',label:'Domínio'},
+    {id:'n-stakeholders',label:'Stakeholders'},
+  ],
+  requisitos: [
+    {id:'r-funcionais',label:'Requisitos funcionais'},
+    {id:'r-desempenho',label:'Desempenho e latência'},
+    {id:'r-seguranca',label:'Segurança'},
+    {id:'r-escala',label:'Escalabilidade'},
+  ],
+  restricoes: [
+    {id:'rt-tecnicas',label:'Restrições técnicas'},
+    {id:'rt-financeiras',label:'Financeiras'},
+    {id:'rt-equipe',label:'Equipe'},
+    {id:'rt-riscos',label:'Riscos'},
+  ],
+  arquitetura: [
+    {id:'a-estilo',label:'Estilo arquitetural'},
+    {id:'a-responsabilidades',label:'Responsabilidades'},
+    {id:'a-protocolos',label:'Protocolos'},
+    {id:'a-adrs',label:'ADRs'},
+    {id:'a-rastreabilidade',label:'Rastreabilidade'},
+  ],
+  c4: [
+    {id:'c4-n1',label:'N1 · Contexto'},
+    {id:'c4-n2',label:'N2 · Contêineres'},
+    {id:'c4-n3',label:'N3 · Componentes GLPI'},
+    {id:'c4-n4',label:'N4 · Sequência de código'},
+    {id:'c4-roadmap',label:'Roadmap de fases'},
+  ],
+  backlog: [
+    {id:'bl-e1',label:'E1 · Infra'},
+    {id:'bl-e2',label:'E2 · Detecção'},
+    {id:'bl-e3',label:'E3 · Chamados'},
+    {id:'bl-e4e5',label:'E4–E9 · demais épicos'},
+  ],
+  impl: [
+    {id:'im-ordem',label:'Ordem de execução'},
+    {id:'im-webhook',label:'Script do webhook'},
+    {id:'im-ansible',label:'Playbook Ansible'},
+    {id:'im-estrutura',label:'Estrutura Git'},
+  ],
+  runbook: [
+    {id:'rb-validar',label:'Validar webhook'},
+    {id:'rb-falha',label:'Webhook não funciona'},
+    {id:'rb-backup',label:'Verificar backup'},
+    {id:'rb-restore',label:'Restaurar GLPI'},
+    {id:'rb-update',label:'Atualizar GLPI/Zabbix'},
+    {id:'rb-monit',label:'Alertas Zabbix'},
+  ]
+};
+
+function showPanel(name) {
+  PANELS.forEach(function(p) {
+    var panel = document.getElementById('panel-' + p);
+    var btn = document.querySelector('.tab-btn[onclick*="' + p + '"]');
+    if (p === name) {
+      panel.classList.add('active');
+      btn.classList.add('active');
+    } else {
+      panel.classList.remove('active');
+      btn.classList.remove('active');
+    }
+  });
+  buildSidebar(name);
+  document.getElementById('content').scrollTop = 0;
+  window.scrollTo(0, 0);
+}
+
+function buildSidebar(panel) {
+  var sb = document.getElementById('sidebar');
+  var items = SIDEBARDATA[panel] || [];
+  sb.innerHTML = '<span class="sb-label">Nesta seção</span>';
+  items.forEach(function(item) {
+    var a = document.createElement('a');
+    a.className = 'sb-link';
+    a.href = '#' + item.id;
+    a.textContent = item.label;
+    a.onclick = function(e) {
+      e.preventDefault();
+      var el = document.getElementById(item.id);
+      if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+      document.querySelectorAll('.sb-link').forEach(function(l){ l.classList.remove('active'); });
+      a.classList.add('active');
+    };
+    sb.appendChild(a);
+  });
+}
+
+// init
+buildSidebar('negocio');
+
+// scroll spy para sidebar
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(e) {
+    if (e.isIntersecting) {
+      document.querySelectorAll('.sb-link').forEach(function(l) {
+        l.classList.toggle('active', l.getAttribute('href') === '#' + e.target.id);
+      });
+    }
+  });
+}, {rootMargin: '-20% 0px -70% 0px'});
+
+document.querySelectorAll('section[id], h2[id]').forEach(function(el) {
+  observer.observe(el);
+});
+
+// copy code
+function copyCode(btn) {
+  var pre = btn.closest('.file-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(function() {
+    btn.textContent = 'copiado!';
+    setTimeout(function() { btn.textContent = 'copiar'; }, 2000);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Segredos — nunca commitar
+vault_pass.txt
+*.env
+.env*
+secrets/
+*.secret
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Sistema
+.DS_Store
+*.swp
+*.swo

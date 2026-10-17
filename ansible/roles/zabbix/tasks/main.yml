@@ -1,0 +1,63 @@
+---
+# Role: zabbix — instala Zabbix Server 7.x + PostgreSQL + Nginx
+
+- name: Adicionar repositório oficial Zabbix 7.0
+  apt:
+    deb: "https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_7.0-2+ubuntu22.04_all.deb"
+
+- name: Atualizar cache apt
+  apt:
+    update_cache: yes
+
+- name: Instalar Zabbix + PostgreSQL + dependências
+  apt:
+    name:
+      - zabbix-server-pgsql
+      - zabbix-frontend-php
+      - zabbix-nginx-conf
+      - zabbix-sql-scripts
+      - zabbix-agent2
+      - postgresql
+      - python3-psycopg2
+    state: present
+
+- name: Criar banco PostgreSQL para Zabbix
+  become_user: postgres
+  postgresql_db:
+    name: "{{ zabbix_db_name }}"
+    encoding: UTF-8
+
+- name: Criar usuário PostgreSQL
+  become_user: postgres
+  postgresql_user:
+    db: "{{ zabbix_db_name }}"
+    name: "{{ zabbix_db_user }}"
+    password: "{{ zabbix_db_password }}"
+    priv: ALL
+
+- name: Importar schema inicial Zabbix
+  shell: |
+    zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz | \
+    psql -U {{ zabbix_db_user }} {{ zabbix_db_name }}
+  become_user: postgres
+  args:
+    creates: /var/lib/pgsql/.schema_imported
+
+- name: Configurar zabbix_server.conf
+  template:
+    src: zabbix_server.conf.j2
+    dest: /etc/zabbix/zabbix_server.conf
+    owner: zabbix
+    mode: '0640'
+  notify: restart zabbix-server
+
+- name: Habilitar e iniciar serviços
+  systemd:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  loop:
+    - zabbix-server
+    - zabbix-agent2
+    - nginx
+    - php8.1-fpm

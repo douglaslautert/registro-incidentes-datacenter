@@ -1,0 +1,22 @@
+---
+# Playbook principal — Registro de Incidentes do Datacenter
+# Uso: ansible-playbook site.yml --ask-vault-pass
+# Tags disponíveis: zabbix, firewall, backup
+
+- name: VM-ZABBIX — instalar Zabbix 7 + PostgreSQL
+  hosts: zabbix
+  roles:
+    - role: zabbix
+      tags: zabbix
+    - role: firewall
+      tags: firewall
+    - role: backup
+      tags: backup
+
+- name: VM-GLPI — firewall e backup
+  hosts: glpi
+  roles:
+    - role: firewall
+      tags: firewall
+    - role: backup
+      tags: backup
