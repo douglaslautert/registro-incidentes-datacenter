@@ -1137,6 +1137,7 @@ curl -sk https://glpi.intra/apirest.php | grep -c session</pre>
 
   <h2 id="dl-baixar">Baixar a pasta</h2>
   <a class="dl-btn" href="../download/registro-incidentes-datacenter.zip" download>⬇ registro-incidentes-datacenter.zip</a>
+  <a class="dl-btn" href="apresentacao-arquitetura.pptx" download>⬇ Apresentação da arquitetura (.pptx)</a>
   <a class="dl-btn alt" href="https://github.com/douglaslautert/registro-incidentes-datacenter" target="_blank" rel="noopener">Ver no GitHub</a>
   <div class="callout info">Descompacte o arquivo para obter a pasta <code>registro-incidentes-datacenter/</code>. Ou clone o repositório: <code>git clone https://github.com/douglaslautert/registro-incidentes-datacenter.git</code></div>
 
@@ -1153,7 +1154,7 @@ curl -sk https://glpi.intra/apirest.php | grep -c session</pre>
       <tr><td><code>ansible/roles/backup/</code></td><td>Scripts de backup do GLPI e do Zabbix</td></tr>
       <tr><td><code>ansible/roles/firewall/</code></td><td>Regras de firewall</td></tr>
       <tr><td><code>scripts/</code></td><td>Configuração via API: regras do GLPI, usuário de serviço, media type e monitor no Zabbix</td></tr>
-      <tr><td><code>docs/</code></td><td>Runbook, modelo C4 (<code>workspace.dsl</code>) e cópia do Master Doc</td></tr>
+      <tr><td><code>docs/</code></td><td>Runbook, modelo C4 (<code>workspace.dsl</code>), apresentação da arquitetura e cópia do Master Doc</td></tr>
     </tbody>
   </table></div>
   <div class="callout warn">O pacote não contém senhas. Antes de rodar o playbook, gere os valores com <code>ansible-vault encrypt_string</code> e ajuste o inventário para a sua rede.</div>
