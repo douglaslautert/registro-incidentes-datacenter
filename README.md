@@ -2,10 +2,10 @@
 
 Sistema de registro e priorização automática de incidentes para datacenter. Ele recebe eventos de três fontes (pessoas, pelo PWA; alertas do **Zabbix**; e-mail), calcula a prioridade de forma determinística (P1–P4), correlaciona eventos relacionados ao mesmo incidente e integra com o **GLPI** para gestão de chamados e ativos. A stack completa sobe com Docker Compose em um único servidor.
 
-**Artigo relacionado**
+**Artigo relacionado** _(rascunho — ajustar ao texto final do artigo)_
 
-- **Título:** _<preencher com o título do artigo>_
-- **Resumo:** _<preencher com o resumo do artigo>_
+- **Título:** Registro e Priorização Automática de Incidentes em Datacenter com Correlação de Eventos e Integração Zabbix/GLPI
+- **Resumo:** Em datacenters acadêmicos, falhas físicas e lógicas são percebidas por canais dispersos — alertas de monitoramento, relatos de técnicos em campo e e-mails —, o que atrasa a triagem e gera chamados duplicados. Este trabalho apresenta um sistema on-premises que unifica alertas de monitoramento e relatos de campo em um evento canônico, atribui prioridade P1–P4 por regras determinísticas e auditáveis (impacto × urgência × confiança, com prioridade máxima para risco a pessoas) e correlaciona eventos relacionados ao mesmo incidente por um escore que combina topologia, proximidade temporal e localização física, com um termo de similaridade semântica por embeddings previsto no modelo. A solução integra-se ao Zabbix, que encaminha alertas por webhook, e ao GLPI, para gestão de chamados e inventário; oferece um aplicativo web progressivo para registro em campo com QR Code, foto e voz; e mantém um vigia externo com notificação por GSM para o caso de indisponibilidade do servidor principal. Toda a stack é distribuída como artefato reprodutível em Docker Compose, com instalação automatizada e experimentos que verificam a priorização, a correlação e a integração com o Zabbix.
 
 ---
 
@@ -348,7 +348,7 @@ O Grafana (http://localhost/grafana) traz os dashboards provisionados a partir d
 
 ## LICENSE
 
-_<definir a licença do artefato e adicionar o arquivo `LICENSE` na raiz do repositório (por exemplo, MIT ou GPL-3.0)>_
+Este projeto está licenciado sob a [Licença MIT](LICENSE).
 
 ---
 
