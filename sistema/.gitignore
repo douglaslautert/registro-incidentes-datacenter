@@ -1,0 +1,9 @@
+# Configuração local com senhas — copie de .env.example
+.env
+
+# Build / dependências
+node_modules/
+dist/
+
+# Certificados TLS locais
+nginx/certs/

@@ -1,0 +1,4 @@
+# Scripts e configs rodam em Linux/containers — sempre LF
+* text=auto eol=lf
+*.png binary
+*.jpg binary

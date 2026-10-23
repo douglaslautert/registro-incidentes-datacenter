@@ -1,0 +1,72 @@
+{
+  "realm": "cesup",
+  "enabled": true,
+  "displayName": "CESUP / UFRGS",
+  "displayNameHtml": "<b>CESUP</b> / UFRGS",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "rememberMe": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionMaxLifespan": 36000,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "incidentes-pwa",
+      "name": "PWA Incidentes",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost/*", "https://incidentes.cesup.ufrgs.br/*"],
+      "webOrigins": ["http://localhost", "https://incidentes.cesup.ufrgs.br"],
+      "attributes": { "pkce.code.challenge.method": "S256" }
+    },
+    {
+      "clientId": "incidentes-api",
+      "name": "API Incidentes",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": true,
+      "secret": "secret123"
+    },
+    {
+      "clientId": "grafana",
+      "name": "Grafana",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "secret": "grafana_secret",
+      "redirectUris": ["http://localhost/grafana/*"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "tecnico-interno",  "description": "Técnico do CESUP — acesso total" },
+      { "name": "terceirizado",     "description": "Prestador de serviço — acesso parcial" },
+      { "name": "gestor",           "description": "Coordenação — leitura e relatórios" },
+      { "name": "plantonista",      "description": "Plantão — ACK e atendimento P1" },
+      { "name": "viewer",           "description": "Usuário do cluster — somente leitura" }
+    ]
+  },
+  "users": [
+    {
+      "username": "tecnico",
+      "enabled": true,
+      "email": "tecnico@cesup.ufrgs.br",
+      "firstName": "Técnico",
+      "lastName": "Teste",
+      "credentials": [{ "type": "password", "value": "tecnico123", "temporary": false }],
+      "realmRoles": ["tecnico-interno"]
+    },
+    {
+      "username": "gestor",
+      "enabled": true,
+      "email": "gestor@cesup.ufrgs.br",
+      "firstName": "Gestor",
+      "lastName": "Teste",
+      "credentials": [{ "type": "password", "value": "gestor123", "temporary": false }],
+      "realmRoles": ["gestor"]
+    }
+  ]
+}
