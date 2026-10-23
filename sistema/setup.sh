@@ -365,11 +365,20 @@ echo -e "${BLUE}[6/7] Configurando Garage S3...${NC}"
 
 bash garage-setup.sh || warn "Garage S3 não configurado — corrija e rode: make garage-setup"
 
-# Schema já criado pelos scripts init/*.sql — marcar migrações Alembic como aplicadas
+# Banco novo: schema já criado pelos scripts init/*.sql — só marcar o Alembic.
+# Banco já versionado (reexecução do setup): aplicar as migrações pendentes.
 wait_healthy api 120 || true
-docker compose exec -T api alembic stamp head >/dev/null 2>&1 \
-    && ok "Alembic marcado na revisão atual" \
-    || warn "Não foi possível marcar o Alembic — rode: docker compose exec api alembic stamp head"
+ALEMBIC_REV=$(docker compose exec -T postgres psql -U cesup -d incidentes -tAc \
+    "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | tr -d '[:space:]' || true)
+if [ -z "$ALEMBIC_REV" ]; then
+    docker compose exec -T api alembic stamp head >/dev/null 2>&1 \
+        && ok "Alembic marcado na revisão atual" \
+        || warn "Não foi possível marcar o Alembic — rode: docker compose exec api alembic stamp head"
+else
+    docker compose exec -T api alembic upgrade head >/dev/null 2>&1 \
+        && ok "Migrações Alembic aplicadas (a partir de $ALEMBIC_REV)" \
+        || warn "Falha nas migrações — rode: make migrate"
+fi
 
 # ══════════════════════════════════════════════════════════════
 # PASSO 7 — Configurar Zabbix via API

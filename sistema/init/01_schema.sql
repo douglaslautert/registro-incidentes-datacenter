@@ -28,11 +28,14 @@ CREATE TABLE IF NOT EXISTS incidentes (
     aberto_em    TIMESTAMPTZ NOT NULL DEFAULT now(),
     fechado_em   TIMESTAMPTZ,
     criado_por   TEXT,
+    local        JSONB,
     PRIMARY KEY (id, aberto_em)
 ) PARTITION BY RANGE (aberto_em);
 
 CREATE TABLE IF NOT EXISTS incidentes_2026_q4 PARTITION OF incidentes FOR VALUES FROM ('2026-10-01') TO ('2027-01-01');
 CREATE TABLE IF NOT EXISTS incidentes_2027_q1 PARTITION OF incidentes FOR VALUES FROM ('2027-01-01') TO ('2027-04-01');
+-- Recebe datas fora das partições trimestrais (evita erro de insert quando o trimestre não foi criado)
+CREATE TABLE IF NOT EXISTS incidentes_default PARTITION OF incidentes DEFAULT;
 
 CREATE TABLE IF NOT EXISTS eventos (
     id                TEXT        PRIMARY KEY,
@@ -43,6 +46,7 @@ CREATE TABLE IF NOT EXISTS eventos (
     local_fileira     TEXT,
     local_rack        TEXT,
     local_unidade     INT,
+    local             JSONB,
     sintoma           TEXT        NOT NULL,
     confianca         FLOAT       NOT NULL CHECK (confianca BETWEEN 0 AND 1),
     seguranca_pessoas BOOLEAN     NOT NULL DEFAULT false,
@@ -62,8 +66,10 @@ CREATE TABLE IF NOT EXISTS acionamentos (
     incidente_id  TEXT        NOT NULL,
     usuario_id    TEXT        NOT NULL,
     canal         canal_notif NOT NULL,
+    mensagem      TEXT,
     acionado_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
     ack_em        TIMESTAMPTZ,
+    ack_por       TEXT,
     escalado      BOOLEAN     NOT NULL DEFAULT false
 );
 
@@ -72,6 +78,7 @@ CREATE TABLE IF NOT EXISTS topologia_arestas (
     destino  TEXT  NOT NULL,
     tipo     TEXT  NOT NULL DEFAULT 'alimenta',
     peso     FLOAT NOT NULL DEFAULT 1.0,
+    ativo_em BOOLEAN NOT NULL DEFAULT true,
     PRIMARY KEY (origem, destino)
 );
 
@@ -80,14 +87,18 @@ CREATE TABLE IF NOT EXISTS runbooks (
     sintoma   TEXT   NOT NULL,
     titulo    TEXT   NOT NULL,
     conteudo  TEXT   NOT NULL,
-    UNIQUE (sintoma)
+    versao    INT    NOT NULL DEFAULT 1,
+    criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (sintoma, versao)
 );
 
 CREATE TABLE IF NOT EXISTS metricas_incidente (
     incidente_id   TEXT    PRIMARY KEY,
     mtta_segundos  FLOAT,
     mttr_segundos  FLOAT,
-    falso_positivo BOOLEAN NOT NULL DEFAULT false
+    falso_positivo BOOLEAN NOT NULL DEFAULT false,
+    causa_fp       TEXT,
+    avaliado_em    TIMESTAMPTZ
 );
 
 CREATE OR REPLACE VIEW v_incidentes_abertos AS

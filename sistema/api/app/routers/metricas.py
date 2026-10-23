@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from app.database import get_db
-from app.models.incidente import Incidente
+from app.models.incidente import Incidente, Evento
 import logging
 
 router = APIRouter(prefix="/api/v1/metricas", tags=["métricas"])
@@ -41,11 +41,13 @@ async def resumo(db: AsyncSession = Depends(get_db)):
             """))
             mtta = res_mtta.scalar()
 
+            total_eventos = (await db.execute(select(func.count()).select_from(Evento))).scalar() or 0
+
             return {
                 "total_incidentes": total,
                 "abertos": abertos,
                 "por_prioridade": por_prio,
-                "total_eventos": 0,
+                "total_eventos": total_eventos,
                 "mtta_minutos": round(mtta, 1) if mtta else None,
                 "mttr_horas":   round(mtta/60, 2) if mtta else None,
                 "fonte": "banco",

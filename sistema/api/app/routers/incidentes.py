@@ -39,6 +39,13 @@ def _usar_banco() -> bool:
             and "x:x@x" not in settings.DATABASE_URL)
 
 
+async def _buscar_incidente_db(db: AsyncSession, incidente_id: str) -> Incidente | None:
+    """Busca por id — a PK é composta (id, aberto_em) por causa do particionamento,
+    então db.get(Incidente, id) não serve."""
+    result = await db.execute(select(Incidente).where(Incidente.id == incidente_id))
+    return result.scalars().first()
+
+
 def _calcular_prioridade(payload: EventoCreate) -> str:
     i, u = inferir_impacto_urgencia(payload.sintoma, payload.fonte)
     return calcular_prioridade(payload.seguranca_pessoas, i, u, payload.confianca)
@@ -114,7 +121,7 @@ async def registrar_evento(
         # Recalcular prioridade se novo evento é mais grave
         if usar_db:
             try:
-                inc_atual = await db.get(Incidente, incidente_id)
+                inc_atual = await _buscar_incidente_db(db, incidente_id)
                 if inc_atual:
                     p_atual = inc_atual.prioridade
                     if ORDEM_PRIORIDADE.get(prioridade,9) < ORDEM_PRIORIDADE.get(p_atual,9):
@@ -146,6 +153,7 @@ async def registrar_evento(
                 await db.flush()
             except SQLAlchemyError as e:
                 log.warning(f"Persistência banco falhou, usando memória: {e}")
+                await db.rollback()
                 usar_db = False
 
         if not usar_db:
@@ -174,8 +182,10 @@ async def registrar_evento(
         try:
             ev_db = Evento(**ev_db_data, incidente_id=incidente_id)
             db.add(ev_db)
+            await db.flush()
         except SQLAlchemyError as e:
             log.warning(f"Evento banco falhou: {e}")
+            await db.rollback()
             _eventos.append({**ev_db_data,"incidente_id":incidente_id})
     else:
         _eventos.append({**ev_db_data,"incidente_id":incidente_id})
@@ -237,7 +247,7 @@ async def buscar_incidente(
 ):
     if _usar_banco():
         try:
-            inc = await db.get(Incidente, incidente_id)
+            inc = await _buscar_incidente_db(db, incidente_id)
             if inc:
                 return {
                     "id":inc.id,"titulo":inc.titulo,"prioridade":inc.prioridade,
@@ -266,12 +276,13 @@ async def fechar_incidente(
     agora = datetime.now(timezone.utc)
     if _usar_banco():
         try:
-            await db.execute(
+            res = await db.execute(
                 update(Incidente)
                 .where(Incidente.id==incidente_id)
                 .values(status="resolvido", causa_raiz=causa_raiz, fechado_em=agora)
             )
-            return {"msg":"Incidente fechado","id":incidente_id}
+            if res.rowcount:
+                return {"msg":"Incidente fechado","id":incidente_id}
         except SQLAlchemyError:
             pass
     inc = _incidentes.get(incidente_id)
@@ -288,7 +299,7 @@ async def confirmar_ack_incidente(
 ):
     if incidente_id not in _incidentes and _usar_banco():
         try:
-            inc = await db.get(Incidente, incidente_id)
+            inc = await _buscar_incidente_db(db, incidente_id)
             if not inc:
                 raise HTTPException(404, "Incidente não encontrado")
         except SQLAlchemyError:
@@ -319,12 +330,13 @@ async def marcar_falso_positivo(
     agora = datetime.now(timezone.utc)
     if _usar_banco():
         try:
-            await db.execute(
+            res = await db.execute(
                 update(Incidente)
                 .where(Incidente.id==incidente_id)
                 .values(status="falso_positivo", causa_raiz=motivo, fechado_em=agora)
             )
-            return {"msg":"Marcado como falso positivo","id":incidente_id}
+            if res.rowcount:
+                return {"msg":"Marcado como falso positivo","id":incidente_id}
         except SQLAlchemyError:
             pass
     inc = _incidentes.get(incidente_id)
