@@ -1,0 +1,38 @@
+{
+  "__inputs": [],
+  "__elements": {},
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Painel operacional — fila de incidentes por prioridade",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "PostgreSQL",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "footer": {}, "showHeader": true },
+      "pluginVersion": "11.2.0",
+      "targets": [{
+        "datasource": "PostgreSQL",
+        "editorMode": "code",
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT id, titulo, prioridade, status, ativo_id, aberto_em, minutos_aberto, total_eventos FROM v_incidentes_abertos LIMIT 50",
+        "refId": "A"
+      }],
+      "title": "Incidentes abertos",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["cesup","operacional"],
+  "title": "CESUP — Operacional",
+  "uid": "cesup-operacional",
+  "version": 1
+}

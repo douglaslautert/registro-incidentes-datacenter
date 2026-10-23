@@ -1,0 +1,499 @@
+name: cesup
+x-api-env:
+  DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
+  REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
+  S3_ENDPOINT: http://garage:3900
+  S3_BUCKET: evidencias
+  S3_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+  S3_SECRET_KEY: ${GARAGE_SECRET_KEY}
+  KEYCLOAK_URL: http://keycloak:8080/auth
+  KEYCLOAK_REALM: cesup
+  KEYCLOAK_CLIENT_ID: incidentes-api
+  KEYCLOAK_CLIENT_SECRET: ${KC_CLIENT_SECRET}
+  SMTP_HOST: ${SMTP_HOST}
+  SMTP_PORT: ${SMTP_PORT}
+  SMTP_USER: ${SMTP_USER}
+  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  PLANTAO_PHONE: ${PLANTAO_PHONE}
+  ZABBIX_URL: http://zabbix-web:8080
+  ZABBIX_USER: ${ZABBIX_USER}
+  ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
+  GLPI_URL: http://glpi:80
+  GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
+  GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
+  SECRET_KEY: ${SECRET_KEY}
+  VIGIA_TOKEN: ${VIGIA_TOKEN}
+  LOG_LEVEL: INFO
+  ENVIRONMENT: production
+  ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cesup-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cesup
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: incidentes
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+    - postgres-data:/var/lib/postgresql/data
+    - ./init:/docker-entrypoint-initdb.d:ro
+    networks:
+    - cesup-net
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U cesup -d incidentes && psql -U cesup -d incidentes -c 'SELECT
+        1' -q --tuples-only 2>/dev/null | grep -q 1
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+    shm_size: 256mb
+    mem_limit: 512m
+  mysql:
+    image: mysql:8.0
+    container_name: cesup-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: ${MYSQL_ZABBIX_PASSWORD}
+      MYSQL_DATABASE: zabbix
+      MYSQL_GLPI_PASSWORD: ${MYSQL_GLPI_PASSWORD}
+    command:
+    - mysqld
+    - --character-set-server=utf8mb4
+    - --collation-server=utf8mb4_bin
+    - --log_bin_trust_function_creators=1
+    volumes:
+    - mysql-data:/var/lib/mysql
+    - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+    - cesup-net
+    healthcheck:
+      test:
+      - CMD
+      - mysqladmin
+      - ping
+      - -h
+      - localhost
+      - -u
+      - zabbix
+      - -p${MYSQL_ZABBIX_PASSWORD}
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    mem_limit: 512m
+  valkey:
+    image: valkey/valkey:7.2-alpine
+    container_name: cesup-valkey
+    restart: unless-stopped
+    command: valkey-server --requirepass ${VALKEY_PASSWORD} --maxmemory 512mb --maxmemory-policy
+      allkeys-lru
+    volumes:
+    - valkey-data:/data
+    networks:
+    - cesup-net
+    healthcheck:
+      test:
+      - CMD
+      - valkey-cli
+      - -a
+      - ${VALKEY_PASSWORD}
+      - ping
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 128m
+  garage:
+    image: dxflrs/garage:v1.0.1
+    container_name: cesup-garage
+    restart: unless-stopped
+    volumes:
+    - ./garage.toml:/etc/garage.toml:ro
+    - garage-data:/var/lib/garage/data
+    - garage-meta:/var/lib/garage/meta
+    networks:
+    - cesup-net
+    command:
+    - server
+    entrypoint:
+    - /garage
+    - --config
+    - /etc/garage.toml
+    mem_limit: 256m
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:ubuntu-7.0-latest
+    container_name: cesup-zabbix-server
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: mysql
+      DB_SERVER_PORT: 3306
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: ${MYSQL_ZABBIX_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      ZBX_TIMEOUT: 10
+      ZBX_STARTPOLLERS: 5
+    volumes:
+    - zabbix-alertscripts:/usr/lib/zabbix/alertscripts
+    - zabbix-externalscripts:/usr/lib/zabbix/externalscripts
+    ports:
+    - 10051:10051
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+    - cesup-net
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - zabbix_server --version || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 512m
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-mysql:ubuntu-7.0-latest
+    container_name: cesup-zabbix-web
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: mysql
+      DB_SERVER_PORT: 3306
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: ${MYSQL_ZABBIX_PASSWORD}
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      PHP_TZ: America/Sao_Paulo
+    depends_on:
+    - zabbix-server
+    - mysql
+    networks:
+    - cesup-net
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080/
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    mem_limit: 256m
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:ubuntu-7.0-latest
+    container_name: cesup-zabbix-agent
+    restart: unless-stopped
+    privileged: true
+    environment:
+      ZBX_HOSTNAME: cesup-docker-host
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+    - zabbix-server
+    networks:
+    - cesup-net
+    mem_limit: 128m
+  glpi:
+    image: diouxx/glpi:latest
+    container_name: cesup-glpi
+    hostname: glpi
+    restart: unless-stopped
+    environment:
+      TIMEZONE: America/Sao_Paulo
+      VERSION_GLPI: "10.0.18"
+      GLPI_DB_HOST: mysql
+      GLPI_DB_USER: glpi
+      GLPI_DB_PASSWORD: ${MYSQL_GLPI_PASSWORD}
+      GLPI_DB_NAME: glpi
+      GLPI_LANG: pt_BR
+    volumes:
+    - glpi-files:/var/www/html/glpi/files
+    - glpi-plugins:/var/www/html/glpi/plugins
+    - glpi-config:/var/www/html/glpi/config
+    # Suprime AH00558: Could not reliably determine the server's fully qualified domain name
+    - ./glpi/servername.conf:/etc/apache2/conf-enabled/zz-servername.conf:ro
+    # GLPI não funciona atrás de subcaminho (/glpi) — publicado em porta própria
+    ports:
+    - 8081:80
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+    - cesup-net
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - "curl -sfL -o /dev/null -w '%{http_code}' http://127.0.0.1/ | grep -qE '^(200|301|302)' || curl -sfL -o /dev/null -w '%{http_code}' http://127.0.0.1/public/ | grep -qE '^(200|301|302)' || curl -sfL -o /dev/null -w '%{http_code}' http://127.0.0.1/glpi/ | grep -qE '^(200|301|302)' || exit 1"
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 300s
+    mem_limit: 768m
+  keycloak:
+    container_name: cesup-keycloak
+    restart: unless-stopped
+    command: start --optimized --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: cesup
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HOSTNAME: ${KC_HOSTNAME:-localhost}
+      KC_HTTP_ENABLED: 'true'
+      KC_HTTP_PORT: '8080'
+      KC_HEALTH_ENABLED: 'true'
+      KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      KC_HOSTNAME_STRICT: 'false'
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_METRICS_ENABLED: 'false'
+      KC_CACHE: local
+      KC_LOG_LEVEL: INFO
+      KC_DB_POOL_INITIAL_SIZE: '1'
+      KC_DB_POOL_MIN_SIZE: '1'
+      KC_DB_POOL_MAX_SIZE: '10'
+      KC_PROXY_HEADERS: xforwarded
+      JAVA_TOOL_OPTIONS: -Xms256m -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+ExitOnOutOfMemoryError
+      KC_SPI_THEME_STATIC_MAX_AGE: '2592000'
+      KC_SPI_THEME_CACHE_THEMES: 'true'
+      KC_SPI_THEME_CACHE_TEMPLATES: 'true'
+      KC_EVENTS_ENABLED: 'false'
+    volumes: []
+    networks:
+    - cesup-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 20s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    mem_limit: 1024m
+    build:
+      context: ./keycloak
+      dockerfile: Dockerfile
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: cesup-api:latest
+    container_name: cesup-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
+      REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
+      S3_ENDPOINT: http://garage:3900
+      S3_BUCKET: evidencias
+      S3_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      S3_SECRET_KEY: ${GARAGE_SECRET_KEY}
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: cesup
+      KEYCLOAK_CLIENT_ID: incidentes-api
+      KEYCLOAK_CLIENT_SECRET: ${KC_CLIENT_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      PLANTAO_PHONE: ${PLANTAO_PHONE}
+      ZABBIX_URL: http://zabbix-web:8080
+      ZABBIX_USER: ${ZABBIX_USER}
+      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
+      GLPI_URL: http://glpi:80
+      GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
+      GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
+      SECRET_KEY: ${SECRET_KEY}
+      VIGIA_TOKEN: ${VIGIA_TOKEN}
+      LOG_LEVEL: INFO
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+    networks:
+    - cesup-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8000/health
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 512m
+    expose:
+    - '8000'
+  worker:
+    image: cesup-api:latest
+    container_name: cesup-worker
+    restart: unless-stopped
+    command: celery -A app.workers.tasks.celery_app worker --loglevel=info --concurrency=4
+      -Q default,notifications
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
+      REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
+      S3_ENDPOINT: http://garage:3900
+      S3_BUCKET: evidencias
+      S3_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      S3_SECRET_KEY: ${GARAGE_SECRET_KEY}
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: cesup
+      KEYCLOAK_CLIENT_ID: incidentes-api
+      KEYCLOAK_CLIENT_SECRET: ${KC_CLIENT_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      PLANTAO_PHONE: ${PLANTAO_PHONE}
+      ZABBIX_URL: http://zabbix-web:8080
+      ZABBIX_USER: ${ZABBIX_USER}
+      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
+      GLPI_URL: http://glpi:80
+      GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
+      GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
+      SECRET_KEY: ${SECRET_KEY}
+      VIGIA_TOKEN: ${VIGIA_TOKEN}
+      LOG_LEVEL: INFO
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+    networks:
+    - cesup-net
+    depends_on:
+    - valkey
+    - api
+    mem_limit: 256m
+  beat:
+    image: cesup-api:latest
+    container_name: cesup-beat
+    restart: unless-stopped
+    command: celery -A app.workers.tasks.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
+      REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
+      S3_ENDPOINT: http://garage:3900
+      S3_BUCKET: evidencias
+      S3_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
+      S3_SECRET_KEY: ${GARAGE_SECRET_KEY}
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: cesup
+      KEYCLOAK_CLIENT_ID: incidentes-api
+      KEYCLOAK_CLIENT_SECRET: ${KC_CLIENT_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      PLANTAO_PHONE: ${PLANTAO_PHONE}
+      ZABBIX_URL: http://zabbix-web:8080
+      ZABBIX_USER: ${ZABBIX_USER}
+      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
+      GLPI_URL: http://glpi:80
+      GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
+      GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
+      SECRET_KEY: ${SECRET_KEY}
+      VIGIA_TOKEN: ${VIGIA_TOKEN}
+      LOG_LEVEL: INFO
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+    networks:
+    - cesup-net
+    depends_on:
+    - valkey
+    mem_limit: 128m
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: cesup-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_SERVER_ROOT_URL: ${PUBLIC_URL}/grafana
+      GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
+      GF_INSTALL_PLUGINS: alexanderzobnin-zabbix-app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ZABBIX_USER: ${ZABBIX_USER}
+      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
+    volumes:
+    - grafana-data:/var/lib/grafana
+    - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    - ./grafana/plugins:/etc/grafana/provisioning/plugins:ro
+    networks:
+    - cesup-net
+    depends_on:
+    - postgres
+    mem_limit: 256m
+  pwa-builder:
+    build:
+      context: ./pwa
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${PUBLIC_URL}/api
+        VITE_WS_URL: ${PUBLIC_WS_URL}/ws
+        VITE_KEYCLOAK_URL: ${PUBLIC_URL}/auth
+        VITE_KEYCLOAK_REALM: cesup
+        VITE_KEYCLOAK_CLIENT_ID: incidentes-pwa
+    container_name: cesup-pwa-builder
+    volumes:
+    - pwa-dist:/app/dist
+    networks:
+    - cesup-net
+    restart: 'no'
+    mem_limit: 256m
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: cesup-nginx
+    restart: unless-stopped
+    ports:
+    - 80:80
+    - 443:443
+    volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    - ./nginx/certs:/etc/nginx/certs:ro
+    - pwa-dist:/var/www/pwa:ro
+    networks:
+    - cesup-net
+    depends_on:
+      api:
+        condition: service_started
+      keycloak:
+        condition: service_started
+      grafana:
+        condition: service_started
+      zabbix-web:
+        condition: service_started
+      glpi:
+        condition: service_started
+    mem_limit: 128m
+volumes:
+  postgres-data: null
+  mysql-data: null
+  valkey-data: null
+  garage-data: null
+  garage-meta: null
+  grafana-data: null
+  pwa-dist: null
+  zabbix-alertscripts: null
+  zabbix-externalscripts: null
+  glpi-files: null
+  glpi-plugins: null
+  glpi-config: null
+networks:
+  cesup-net:
+    driver: bridge
