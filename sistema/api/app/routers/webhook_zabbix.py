@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db
 from app.schemas.evento import EventoCreate
 from app.routers.incidentes import registrar_evento
 import logging
@@ -12,7 +14,8 @@ SEVERITY_MAP = {
 }
 
 @router.post("/webhook/zabbix")
-async def receber_webhook_zabbix(request: Request, bg: BackgroundTasks):
+async def receber_webhook_zabbix(request: Request, bg: BackgroundTasks,
+                                 db: AsyncSession = Depends(get_db)):
     """Recebe alertas do Zabbix e converte para EventoCanônico."""
     body = await request.json()
     log.info(f"Webhook Zabbix: {body}")
@@ -34,7 +37,7 @@ async def receber_webhook_zabbix(request: Request, bg: BackgroundTasks):
         confianca=confianca,
         seguranca_pessoas="power" in trigger.lower() or "ups" in trigger.lower(),
     )
-    resultado = await registrar_evento(evento, bg)
+    resultado = await registrar_evento(evento, bg, db)
     log.info(f"Incidente: {resultado.get('incidente_id')} P={resultado.get('prioridade')}")
     return {"msg": "ok", "incidente_id": resultado.get("incidente_id"),
             "prioridade": resultado.get("prioridade")}
