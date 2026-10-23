@@ -1,5 +1,5 @@
 .PHONY: setup up down restart logs ps build clean migrate db sh \
-        garage-setup zabbix-setup garage-key garage-status health zabbix-logs glpi-logs glpi-token
+        glpi-setup garage-setup zabbix-setup garage-key garage-status health zabbix-logs glpi-logs glpi-token
 
 # Setup completo (primeira vez)
 setup:
@@ -56,6 +56,10 @@ db:
 # MySQL do Zabbix/GLPI
 db-mysql:
 	docker compose exec mysql mysql -u root -p${MYSQL_ROOT_PASSWORD}
+
+# Instalar/configurar GLPI (banco, API REST, App-Token no .env) — idempotente
+glpi-setup:
+	bash glpi-setup.sh
 
 # Configurar Garage S3 (layout, bucket, chave no .env) — idempotente
 garage-setup:
