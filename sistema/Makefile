@@ -1,5 +1,5 @@
 .PHONY: setup up down restart logs ps build clean migrate db sh \
-        glpi-setup garage-setup zabbix-setup garage-key garage-status health zabbix-logs glpi-logs glpi-token
+        rede-local glpi-setup garage-setup zabbix-setup garage-key garage-status health zabbix-logs glpi-logs glpi-token
 
 # Setup completo (primeira vez)
 setup:
@@ -56,6 +56,11 @@ db:
 # MySQL do Zabbix/GLPI
 db-mysql:
 	docker compose exec mysql mysql -u root -p${MYSQL_ROOT_PASSWORD}
+
+# Acesso pela rede local (IP do servidor + HTTPS autoassinado)
+# make rede-local [ip=192.168.0.10] [args=--sem-https]
+rede-local:
+	bash rede-local.sh $(ip) $(args)
 
 # Instalar/configurar GLPI (banco, API REST, App-Token no .env) — idempotente
 glpi-setup:

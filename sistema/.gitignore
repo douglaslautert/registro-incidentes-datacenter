@@ -7,3 +7,6 @@ dist/
 
 # Certificados TLS locais
 nginx/certs/
+
+# HTTPS da rede local — gerado por rede-local.sh a partir de nginx/ssl.conf.template
+nginx/conf.d/cesup-ssl.conf

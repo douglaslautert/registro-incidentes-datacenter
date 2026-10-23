@@ -21,6 +21,30 @@ make health              # estado dos containers
 | http://localhost/zabbix/ | Zabbix |
 | http://localhost:8081 | GLPI |
 
+## Acesso pela rede local
+
+Por padrão tudo responde em `localhost`. Para acessar de outros computadores e celulares da rede, rode depois do `make setup`:
+
+```bash
+make rede-local                     # detecta o IP do servidor
+make rede-local ip=192.168.0.10     # ou informe o IP (ou um nome DNS da rede)
+```
+
+O script ([`rede-local.sh`](rede-local.sh)):
+
+1. Troca no `.env` o `PUBLIC_URL` para `https://<IP>` e o `KC_HOSTNAME` para o IP.
+2. Gera um certificado HTTPS autoassinado (`nginx/certs/cesup.crt`) e ativa a porta 443 no nginx.
+3. Reconstrói o PWA e recria Keycloak, Grafana, API e nginx com o novo endereço.
+4. Inclui o endereço nos redirect URIs dos clients do Keycloak.
+
+Depois disso, acesse `https://<IP>` (PWA, `/api/docs`, `/auth`, `/grafana`, `/zabbix/`) e `http://<IP>:8081` (GLPI). A porta 80 continua respondendo em HTTP.
+
+**Por que HTTPS:** os navegadores só liberam câmera e microfone em HTTPS ou em `localhost`. Sem HTTPS, a leitura de QR Code, a foto e a gravação de voz do PWA não funcionam nos outros aparelhos. O certificado é autoassinado, então no 1º acesso o navegador mostra um aviso. Aceite-o, ou instale `nginx/certs/cesup.crt` como certificado confiável nos aparelhos. Se não precisar dessas funções, use `make rede-local args=--sem-https`.
+
+**Firewall:** se o servidor tiver firewall, libere as portas 80, 443 e 8081 para a rede local. Por exemplo, com `ufw`: `sudo ufw allow from 192.168.0.0/24 to any port 80,443,8081 proto tcp`.
+
+Se o IP do servidor mudar, rode `make rede-local` de novo. É seguro repetir.
+
 ## Vigia externo
 
 O vigia ([`vigia/`](vigia/)) roda em outro dispositivo, com 4G/GSM, e consulta a cada 60 s:
