@@ -1,4 +1,4 @@
-"""Gera os parâmetros JSON do mediatype.create do webhook CESUP (usado pelo setup.sh)."""
+"""Gera os parâmetros JSON do mediatype.create do webhook CESUP (usado pelo zabbix-setup.sh)."""
 import json
 
 # O Zabbix entrega os parâmetros (já com as macros expandidas) como JSON em `value`

@@ -1,9 +1,14 @@
-.PHONY: setup up down restart logs ps build clean migrate db sh \
+.PHONY: install uninstall up down restart logs ps build clean migrate db sh \
         rede-local glpi-setup garage-setup zabbix-setup garage-key garage-status health zabbix-logs glpi-logs glpi-token
 
-# Setup completo (primeira vez)
-setup:
-	chmod +x setup.sh && ./setup.sh
+# Instalação completa (primeira vez; pode ser repetida)
+install:
+	bash install.sh
+
+# Desinstalação: containers, volumes (dados) e imagens do sistema
+# make uninstall [args="--manter-dados --sim"]
+uninstall:
+	bash uninstall.sh $(args)
 
 # Subir todos os containers
 up:
@@ -40,10 +45,6 @@ sh:
 # Apaga tudo incluindo volumes
 clean:
 	docker compose down -v --remove-orphans
-
-# Reinstalação completa (apaga tudo e instala do zero)
-reinstalar:
-	bash reinstalar.sh
 
 # Migrações Alembic
 migrate:

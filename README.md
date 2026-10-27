@@ -32,11 +32,13 @@ Este README segue o modelo do Comitê Técnico de Artefatos (CTA) da SBC:
 ├── sistema/                  # Artefato principal: stack Docker Compose
 │   ├── docker-compose.yml    # Todos os serviços (15 containers)
 │   ├── .env.example          # Modelo de configuração (copiar para .env)
-│   ├── setup.sh              # Instalação automatizada (7 passos)
+│   ├── install.sh            # Instalação automatizada (7 passos) — make install
+│   ├── uninstall.sh          # Remove containers, dados e imagens — make uninstall
+│   ├── glpi-setup.sh         # Passo 4 isolado: GLPI (idempotente)
 │   ├── garage-setup.sh       # Passo 6 isolado: Garage S3 (idempotente)
 │   ├── zabbix-setup.sh       # Passo 7 isolado: Zabbix via API (idempotente)
-│   ├── reinstalar.sh         # Apaga tudo (inclusive dados) e reinstala
-│   ├── Makefile              # Atalhos: make setup, make health, make logs...
+│   ├── rede-local.sh         # Acesso pela rede local com HTTPS — make rede-local
+│   ├── Makefile              # Atalhos: make install, make health, make logs...
 │   ├── api/                  # API FastAPI + workers Celery + migrações Alembic
 │   │   └── app/services/     # prioridade.py, correlacao.py, embedding.py...
 │   ├── pwa/                  # Aplicativo web (React + Vite) para técnicos
@@ -113,7 +115,7 @@ Todos os componentes rodam em containers na rede Docker `cesup-net`:
 |---|---|---|
 | Docker Engine | 24 ou superior | Execução dos containers |
 | Docker Compose | v2 (plugin `docker compose`) | Orquestração |
-| GNU Make | 4.x | Atalhos (`make setup`, `make health`) |
+| GNU Make | 4.x | Atalhos (`make install`, `make health`) |
 | Bash | 4.4 ou superior | Scripts de instalação |
 | curl | qualquer | Chamadas às APIs no setup e nos testes |
 | Python 3 | 3.8 ou superior (só biblioteca padrão) | Parsing de JSON no setup e nos testes |
@@ -144,7 +146,7 @@ Nenhum benchmark ou conjunto de dados externo é necessário. Os dados iniciais 
 - **Senhas padrão.** O `.env.example` traz senhas de exemplo (`admin123`, `zabbix`, `glpi/glpi` etc.). Elas servem para avaliação local; troque-as antes de qualquer uso fora de um ambiente isolado.
 - **Portas expostas.** O setup publica as portas `80`, `8081` e `10051` em todas as interfaces do host. Em rede compartilhada, restrinja o acesso com firewall (por exemplo, `sudo ufw allow from 127.0.0.1`).
 - **Segredo do Garage.** O `rpc_secret` em [`sistema/garage.toml`](sistema/garage.toml) é público neste repositório. A porta RPC (3901) só é acessível dentro da rede Docker; para produção, gere outro com `openssl rand -hex 32`.
-- **Remoção.** `make clean` (dentro de `sistema/`) remove todos os containers e volumes criados pelo artefato. Nenhum arquivo fora do diretório do projeto e dos volumes Docker é alterado.
+- **Remoção.** `make uninstall` (dentro de `sistema/`) remove os containers, os volumes e as imagens criados pelo artefato, depois de pedir confirmação. Ele só mexe no projeto Docker `cesup`; containers e volumes de outros projetos da máquina não são tocados. Nenhum arquivo fora do diretório do projeto e dos volumes Docker é alterado.
 
 ---
 
@@ -170,12 +172,12 @@ Nenhum benchmark ou conjunto de dados externo é necessário. Os dados iniciais 
 3. Execute a instalação:
 
    ```bash
-   make setup
+   make install
    ```
 
    O script executa 7 passos: build das imagens, bancos de dados, schema do Zabbix, instalação do GLPI, Keycloak, Garage S3 e configuração do Zabbix (webhook, ação de alerta e host).
 
-4. Ao final, a mensagem `Setup concluído com sucesso!` deve aparecer, junto com a lista de serviços:
+4. Ao final, a mensagem `Instalação concluída com sucesso!` deve aparecer, junto com a lista de serviços:
 
    | URL | Serviço | Usuário / senha padrão |
    |---|---|---|
@@ -188,7 +190,9 @@ Nenhum benchmark ou conjunto de dados externo é necessário. Os dados iniciais 
 
    Se você acessa de outra máquina, troque `localhost` pelo IP do servidor.
 
-Se o passo 6 (Garage) ou o 7 (Zabbix) mostrar um aviso, é possível repeti-los isoladamente, sem reinstalar: `make garage-setup` e `make zabbix-setup`.
+Se o passo 4 (GLPI), o 6 (Garage) ou o 7 (Zabbix) mostrar um aviso, é possível repeti-los isoladamente, sem reinstalar: `make glpi-setup`, `make garage-setup` e `make zabbix-setup`.
+
+**Desinstalar ou reinstalar.** `make uninstall` remove os containers, os volumes (todos os dados) e as imagens do sistema, depois de pedir confirmação. Com `make uninstall args=--manter-dados`, os dados são preservados. Para reinstalar do zero, rode `make uninstall && make install`. O `.env` e o certificado HTTPS ficam no disco.
 
 ---
 
@@ -412,7 +416,7 @@ docker run -it --rm -p 8080:8080 -v "$(pwd)/docs:/usr/local/structurizr" structu
 | `⚠ Erro ao criar bucket` no passo 6 | Garage ainda sem layout ou sem quorum | `make garage-setup` |
 | `⚠ API do Zabbix não respondeu` no passo 7 | Frontend do Zabbix ainda iniciando, ou nginx com IP antigo de um container | `docker compose exec nginx nginx -s reload` e depois `make zabbix-setup` |
 | API retorna 502 pelo nginx | Container recriado ganhou IP novo | `docker compose exec nginx nginx -s reload` |
-| Postgres `unhealthy` ou schema ausente | Os scripts `init/` só rodam com volume vazio | `bash limpar_postgres.sh` (apaga os dados do Postgres) ou `make reinstalar` |
+| Postgres `unhealthy` ou schema ausente | Os scripts `init/` só rodam com volume vazio | `bash limpar_postgres.sh` (apaga os dados do Postgres) ou `make uninstall && make install` |
 | GLPI não instalou automaticamente | O download do GLPI no 1º start demorou | Instalação web em http://localhost:8081 (host `mysql`, usuário `glpi`, senha do `.env`) |
 | Keycloak não autentica | 1º start lento (até 3 min) | `bash diagnostico-keycloak.sh` |
 

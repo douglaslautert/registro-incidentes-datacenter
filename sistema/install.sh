@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-#  CESUP Incidentes — setup.sh
-#  Configura tudo automaticamente:
+#  CESUP Incidentes — install.sh
+#  Instala e configura tudo automaticamente (make install):
 #  Keycloak · Garage S3 · Zabbix (banco + webhook) · GLPI (banco + API)
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -14,7 +14,7 @@ fail() { echo -e "${RED}  ✗ $1${NC}"; exit 1; }
 
 echo ""
 echo -e "${BLUE}══════════════════════════════════════════════${NC}"
-echo -e "${BLUE}  CESUP Incidentes — Setup completo${NC}"
+echo -e "${BLUE}  CESUP Incidentes — Instalação${NC}"
 echo -e "${BLUE}══════════════════════════════════════════════${NC}"
 echo ""
 
@@ -235,7 +235,7 @@ echo -e "${BLUE}[6/7] Configurando Garage S3...${NC}"
 bash garage-setup.sh || warn "Garage S3 não configurado — corrija e rode: make garage-setup"
 
 # Banco novo: schema já criado pelos scripts init/*.sql — só marcar o Alembic.
-# Banco já versionado (reexecução do setup): aplicar as migrações pendentes.
+# Banco já versionado (reexecução da instalação): aplicar as migrações pendentes.
 wait_healthy api 120 || true
 ALEMBIC_REV=$(docker compose exec -T postgres psql -U cesup -d incidentes -tAc \
     "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | tr -d '[:space:]' || true)
@@ -280,7 +280,7 @@ echo ""
 # ══════════════════════════════════════════════════════════════
 echo ""
 echo -e "${GREEN}══════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  Setup concluído com sucesso!${NC}"
+echo -e "${GREEN}  Instalação concluída com sucesso!${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════${NC}"
 echo ""
 BASE_URL="${PUBLIC_URL:-http://localhost}"
@@ -309,5 +309,5 @@ echo -e "    ${YELLOW}make logs${NC}      — ver todos os logs"
 echo -e "    ${YELLOW}make health${NC}    — checar saúde dos containers"
 echo -e "    ${YELLOW}make db${NC}        — abrir psql no banco de incidentes"
 echo -e "    ${YELLOW}make down${NC}      — parar tudo"
-echo -e "    ${YELLOW}make clean${NC}     — parar e apagar tudo (volumes inclusos)"
+echo -e "    ${YELLOW}make uninstall${NC} — desinstalar (apaga containers, dados e imagens do sistema)"
 echo ""
