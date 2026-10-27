@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { AudioChamado } from './components/AudioChamado'
 
 const API = import.meta.env.VITE_API_URL || '/api'
 
@@ -10,7 +11,7 @@ const STATUS_COR: Record<string, string> = {
   resolvido: '#16a34a', falso_positivo: '#6b7280',
 }
 
-type Aba = 'registrar' | 'listar' | 'qr' | 'foto' | 'metricas' | 'links'
+type Aba = 'registrar' | 'audio' | 'listar' | 'qr' | 'foto' | 'metricas' | 'links'
 
 interface Incidente {
   id: string; prioridade: string; status: string
@@ -144,6 +145,7 @@ export default function App() {
   // ── UI ───────────────────────────────────────────────────────
   const abas: { id: Aba; label: string }[] = [
     { id:'registrar', label:'+ Registrar' },
+    { id:'audio',     label:'🎙 Áudio'     },
     { id:'listar',    label:'📋 Abertos'   },
     { id:'qr',        label:'📷 QR Code'   },
     { id:'foto',      label:'🖼 Foto'       },
@@ -212,6 +214,12 @@ export default function App() {
             {carregando ? 'Enviando...' : 'Registrar incidente'}
           </button>
         </form>
+      )}
+
+      {/* ── Áudio → chamado ───────────────────────────────── */}
+      {aba === 'audio' && (
+        <AudioChamado api={API} ativoInicial={ativoQr}
+          onCriado={p => { aviso(`✔ Chamado criado pelo áudio — Prioridade: ${p}`, 'ok'); setAtivoQr(null) }} />
       )}
 
       {/* ── Listar ────────────────────────────────────────── */}
@@ -370,7 +378,8 @@ export default function App() {
             { label:'🔑 Keycloak — Gestão de usuários',  url:'/auth',         desc:'admin / admin123' },
             { label:'📈 Grafana — Dashboards',           url:'/grafana',      desc:'admin / admin123' },
             { label:'🔔 Zabbix — Monitoramento',         url:'/zabbix',       desc:'Admin / zabbix' },
-            { label:'🎫 GLPI — Chamados ITSM',           url:'/glpi',         desc:'glpi / glpi' },
+            // GLPI tem porta própria (8081) e só HTTP: usa o mesmo host em que o PWA foi aberto
+            { label:'🎫 GLPI — Chamados ITSM',           url:`http://${window.location.hostname}:8081`, desc:'glpi / glpi' },
           ].map(l => (
             <a key={l.url} href={l.url} target="_blank" rel="noreferrer"
               style={{ padding:14, borderRadius:8, border:'1px solid #e5e7eb',

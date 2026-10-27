@@ -1,4 +1,5 @@
 """Motor de prioridade P1-P4 — regras determinísticas, nunca IA."""
+import unicodedata
 
 def calcular_prioridade(
     seguranca_pessoas: bool,
@@ -17,7 +18,8 @@ def calcular_prioridade(
 
 def inferir_impacto_urgencia(sintoma: str, fonte: str) -> tuple[int, int]:
     """Valores padrão por tipo de sintoma até calibração manual."""
-    sintoma = sintoma.lower()
+    # Sem acentos: relatos em texto livre trazem "água", "memória", "fumaça"
+    sintoma = unicodedata.normalize("NFKD", sintoma.lower()).encode("ascii", "ignore").decode()
     if any(k in sintoma for k in ["temperatura", "superaquecimento", "thermal"]):
         return 4, 5
     if any(k in sintoma for k in ["ups", "bateria", "energia", "power"]):

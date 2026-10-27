@@ -336,7 +336,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    mem_limit: 512m
+    # 2 workers do uvicorn, cada um com o modelo de transcrição carregado (~300 MB)
+    mem_limit: 1g
     expose:
     - '8000'
   worker:
