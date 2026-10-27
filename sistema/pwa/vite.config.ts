@@ -9,6 +9,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // O service worker controla o site inteiro ("/") e responderia toda
+        // navegação com o index.html do PWA — escondendo os outros serviços
+        // publicados no mesmo endereço pelo nginx
+        navigateFallbackDenylist: [/^\/(api|ws|auth|grafana|zabbix|glpi)(\/|$|\?)/],
         runtimeCaching: [{
           urlPattern: /^\/api\/v1\/.*/,
           handler: 'NetworkFirst',
