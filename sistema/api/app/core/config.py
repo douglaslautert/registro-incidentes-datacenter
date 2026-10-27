@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # GSM
     PLANTAO_PHONE: str = ""
     VIGIA_TOKEN:   str = "vigia-token-cesup-2026"
+    # Transcrição de voz (faster-whisper, local): tiny | base | small
+    WHISPER_MODEL: str = "base"
     # Zabbix
     ZABBIX_URL: str = "http://zabbix-web:8080"
     ZABBIX_USER: str = "Admin"

@@ -8,9 +8,14 @@ O roteiro completo está no [README da raiz](../README.md): requisitos, instala�
 
 ```bash
 cp .env.example .env     # ajuste as senhas se necessário
-make setup               # instalação completa (15–30 min na 1ª vez)
+make install             # instalação completa (15–30 min na 1ª vez)
 make health              # estado dos containers
 ```
+
+Para desinstalar, `make uninstall` remove os containers, os volumes (**todos os dados**) e as imagens do sistema, depois de pedir confirmação. Ele só mexe no projeto `cesup`, sem tocar em outros projetos Docker da máquina. O `.env` e o certificado HTTPS ficam no disco.
+
+- `make uninstall args=--manter-dados` remove containers e imagens, mas preserva os dados.
+- Para reinstalar do zero: `make uninstall && make install`.
 
 | URL | Serviço |
 |-----|---------|
@@ -23,7 +28,7 @@ make health              # estado dos containers
 
 ## Acesso pela rede local
 
-Por padrão tudo responde em `localhost`. Para acessar de outros computadores e celulares da rede, rode depois do `make setup`:
+Por padrão tudo responde em `localhost`. Para acessar de outros computadores e celulares da rede, rode depois do `make install`:
 
 ```bash
 make rede-local                     # detecta o IP do servidor

@@ -1,12 +1,37 @@
-"""Serviço de transcrição de voz — Whisper local ou fallback por texto."""
-import logging, os
+"""Serviço de transcrição de voz — faster-whisper local (on-premises) ou fallback manual."""
+import io, logging, math, threading
+from app.core.config import settings
 
 log = logging.getLogger("transcricao")
 
+_modelo = None
+_trava = threading.Lock()
+
+
+def _carregar_modelo():
+    """Carrega o modelo uma única vez por processo (a 1ª chamada leva alguns segundos)."""
+    global _modelo
+    with _trava:
+        if _modelo is None:
+            from faster_whisper import WhisperModel
+            _modelo = WhisperModel(settings.WHISPER_MODEL, device="cpu", compute_type="int8")
+            log.info(f"Modelo faster-whisper '{settings.WHISPER_MODEL}' carregado")
+    return _modelo
+
+
+def _dica_vocabulario() -> str:
+    """Nomes dos ativos e locais do CESUP: orientam o Whisper nos termos do datacenter
+    (sem isso, "Node 01" vira "Nord-01")."""
+    from app.routers.ativos import _qr_map
+    ativos = ", ".join(a["nome"] for a in _qr_map.values())
+    salas = ", ".join(sorted({a["sala"].replace("-", " ") for a in _qr_map.values()}))
+    return f"Relato de incidente no datacenter do CESUP. Ativos: {ativos}. Locais: {salas}."
+
+
 def transcrever_audio(dados: bytes, content_type: str) -> dict:
     """
-    Transcreve áudio para texto.
-    Usa Whisper se disponível; caso contrário retorna placeholder para Sprint 6.
+    Transcreve áudio (WebM/Opus, MP4/AAC, WAV, OGG, MP3) para texto em português.
+    Se o faster-whisper não estiver instalado, devolve texto vazio para preenchimento manual.
     """
     resultado = {
         "texto": "",
@@ -15,28 +40,26 @@ def transcrever_audio(dados: bytes, content_type: str) -> dict:
         "duracao_segundos": None,
     }
     try:
-        import whisper  # type: ignore
-        import tempfile, soundfile as sf  # type: ignore
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
-            tmp.write(dados)
-            tmp_path = tmp.name
-        model = whisper.load_model("tiny")  # modelo leve para MVP
-        res = model.transcribe(tmp_path, language="pt")
-        os.unlink(tmp_path)
+        modelo = _carregar_modelo()
+        segmentos, info = modelo.transcribe(
+            io.BytesIO(dados), language="pt", beam_size=5,
+            vad_filter=True, initial_prompt=_dica_vocabulario(),
+        )
+        segmentos = list(segmentos)
+        texto = " ".join(s.text.strip() for s in segmentos).strip()
+        # Confiança: média de exp(avg_logprob) dos segmentos (0 a 1)
+        confianca = sum(math.exp(s.avg_logprob) for s in segmentos) / len(segmentos) if segmentos else 0.0
         resultado.update({
-            "texto": res["text"].strip(),
-            "confianca": 0.85,  # Whisper tiny ~85% pt-BR
-            "motor": "whisper-tiny",
+            "texto": texto,
+            "confianca": round(confianca, 2),
+            "motor": f"faster-whisper-{settings.WHISPER_MODEL}",
+            "duracao_segundos": round(info.duration, 1),
         })
-        log.info(f"Transcrição Whisper: '{resultado['texto'][:60]}'")
+        log.info(f"Transcrição ({resultado['duracao_segundos']}s, conf {resultado['confianca']}): '{texto[:60]}'")
     except ImportError:
-        # Whisper não instalado — modo fallback: texto vazio para o técnico preencher
-        resultado.update({
-            "texto": "",
-            "confianca": 0.0,
-            "motor": "fallback-manual",
-        })
-        log.warning("Whisper não instalado — transcrição manual necessária")
+        # faster-whisper não instalado — o técnico digita o relato
+        resultado["motor"] = "fallback-manual"
+        log.warning("faster-whisper não instalado — transcrição manual necessária")
     except Exception as e:
         log.error(f"Erro na transcrição: {e}")
         resultado["motor"] = f"erro: {e}"
