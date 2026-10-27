@@ -1,0 +1,14 @@
+# HTTPS para a rede local — copiado para conf.d/cesup-ssl.conf por rede-local.sh.
+# Fica fora de conf.d/ porque o nginx não sobe sem os arquivos de certificado.
+# Câmera (QR Code) e microfone do PWA só funcionam em HTTPS fora de localhost.
+server {
+    listen 443 ssl;
+    http2 on;
+
+    ssl_certificate     /etc/nginx/certs/cesup.crt;
+    ssl_certificate_key /etc/nginx/certs/cesup.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+
+    include /etc/nginx/snippets/cesup-locations.conf;
+}
