@@ -13,6 +13,9 @@ GENERICAS = {"servidor", "sala", "de", "da", "do", "a", "o", "e"}
 RISCO_PESSOAS = ("fumaca", "fogo", "incendio", "queimad", "faisca", "choque",
                  "agua", "alagad", "vazamento", "ferid", "desmai")
 
+# Palavras que seguem "sala" sem ser o nome dela ("sala de servidores", "sala do nobreak")
+SALA_NAO = {"de", "da", "do", "das", "dos", "e", "o", "os", "as", "em", "no", "na", "um", "ao"}
+
 # Só "zero um", "zero dois"... viram número: "um" sozinho é artigo ("um alarme")
 ZERO_FALADO = re.compile(r"\bzero (um|dois|tres|quatro|cinco|seis|sete|oito|nove)\b")
 DIGITO = {"um": "1", "dois": "2", "tres": "3", "quatro": "4", "cinco": "5",
@@ -75,9 +78,11 @@ def interpretar(texto: str) -> dict:
     sala = ativo["sala"] if ativo else None
     rack = ativo.get("rack") if ativo else None
     if not sala:
-        m = re.search(r"\bsala\s+([a-z]{1,2}|dc|\d{1,2})\b", norm)
-        if m:
-            sala = f"sala-{m.group(1).upper()}"
+        # "sala A", "sala DC", "sala 4", "sala T4", "sala B-12"; "sala de servidores" não é sala
+        for m in re.finditer(r"\bsala\s+([a-z]{1,2}-?\d{1,3}|[a-z]{1,2}|\d{1,3})\b", norm):
+            if m.group(1) not in SALA_NAO:
+                sala = f"sala-{m.group(1).replace('-', '').upper()}"
+                break
     m = re.search(r"\brack\s*-?\s*(\d{1,3})\b", norm)
     if m:
         rack = f"rack-{int(m.group(1)):02d}"

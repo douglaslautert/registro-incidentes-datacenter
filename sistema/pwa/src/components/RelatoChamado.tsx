@@ -16,21 +16,36 @@ interface Props {
 }
 
 const COR: Record<string, string> = { P1: '#dc2626', P2: '#ea580c', P3: '#ca8a04', P4: '#16a34a' }
-const LIMITE_S = 120
+const LIMITE_S = { audio: 120, video: 90 }   // vídeo a ~2,5 Mbit/s: 90 s ≈ 30 MB
 
 // Chrome/Android gravam WebM/Opus; o Safari do iPhone só grava MP4/AAC
 function formatoGravacao(): string {
   const tipos = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac']
   return tipos.find(t => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) || ''
 }
-const extensao = (tipo: string) => tipo.includes('mp4') || tipo.includes('aac') ? 'm4a' : 'webm'
+// iPhone/iPad: Safari e Chrome usam o WebKit, cujo formato nativo é MP4
+const ehIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+// Vídeo: WebM no Chrome/Android, MP4 no iPhone. Em ordem de preferência; os que o navegador
+// diz aceitar mas falham ao gravar são pulados em iniciar().
+function formatosGravacaoVideo(): string[] {
+  const tipos = ehIOS ? ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']
+                      : ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+  return typeof MediaRecorder === 'undefined' ? [] : tipos.filter(t => MediaRecorder.isTypeSupported(t))
+}
+const formatoGravacaoVideo = () => formatosGravacaoVideo()[0] || ''
+const extensao = (tipo: string) =>
+  tipo.startsWith('video/') ? (tipo.includes('mp4') ? 'mp4' : 'webm')
+    : tipo.includes('mp4') || tipo.includes('aac') ? 'm4a' : 'webm'
 // Vídeo pelo tipo ou, se o navegador não informou (comum com .mov), pela extensão
 const ehVideo = (f: Blob, nome: string) =>
   f.type.startsWith('video/') || (!f.type.startsWith('audio/') && /\.(mov|qt|mp4|m4v|webm)$/i.test(nome))
 
 export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
   const [video, setVideo]         = useState(false)     // a mídia enviada é vídeo?
-  const [gravando, setGravando]   = useState(false)
+  const [gravando, setGravando]   = useState<'' | 'audio' | 'video'>('')
+  const [previa, setPrevia]       = useState<MediaStream | null>(null)   // câmera ao vivo
+  const [cameraNegada, setCameraNegada] = useState(false)   // mostra a câmera nativa como alternativa
   const [segundos, setSegundos]   = useState(0)
   const [ocupado, setOcupado]     = useState<'' | 'transcrevendo' | 'analisando' | 'enviando'>('')
   const [progresso, setProgresso] = useState<number | null>(null)
@@ -48,9 +63,11 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
   const pedacos  = useRef<Blob[]>([])
   const timer    = useRef<number | null>(null)
 
-  // Gravar áudio pelo microfone exige HTTPS (ou localhost); sem isso, o técnico envia um arquivo.
-  // Vídeo usa a câmera nativa do celular (input capture), que funciona sem essa API.
-  const podeGravarAudio = window.isSecureContext && !!navigator.mediaDevices?.getUserMedia && !!formatoGravacao()
+  // Gravar pelo microfone e pela câmera exige HTTPS (ou localhost); sem isso, o técnico envia um
+  // arquivo, e o vídeo cai na câmera nativa do celular (input capture), que funciona sem essa API.
+  const temMidia = window.isSecureContext && !!navigator.mediaDevices?.getUserMedia
+  const podeGravarAudio = temMidia && !!formatoGravacao()
+  const podeGravarVideo = temMidia && !!formatoGravacaoVideo()
 
   useEffect(() => {
     fetch(`${api}/v1/ativos/`).then(r => r.json()).then(setAtivos).catch(() => {})
@@ -58,7 +75,13 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
   }, [api])
 
   // Relato longo: encerra sozinho no limite de tempo
-  useEffect(() => { if (gravando && segundos >= LIMITE_S) parar() }, [gravando, segundos])
+  useEffect(() => { if (gravando && segundos >= LIMITE_S[gravando]) parar() }, [gravando, segundos])
+
+  // Saiu da aba no meio da gravação: libera a câmera e o microfone
+  useEffect(() => () => {
+    const rec = recRef.current
+    if (rec?.state === 'recording') { rec.onstop = null; rec.stop(); rec.stream.getTracks().forEach(t => t.stop()) }
+  }, [])
 
   function aplicarSugestao(s: Sugestao) {
     setPrio(s.prioridade_prevista)
@@ -100,32 +123,71 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
     xhr.send(fd)
   }
 
-  async function iniciar() {
-    setErro('')
+  // Grava no primeiro formato que o navegador realmente consegue usar; sem nenhum, no padrão dele
+  function comecarGravacao(stream: MediaStream, tipos: string[], opcoes: MediaRecorderOptions) {
+    for (const tipo of [...tipos, '']) {
+      try {
+        const rec = new MediaRecorder(stream, tipo ? { ...opcoes, mimeType: tipo } : opcoes)
+        rec.start(1000)   // pedaços de 1 s: o que foi gravado não se perde se a gravação cair
+        return { rec, tipo: rec.mimeType || tipo }
+      } catch { /* formato anunciado mas recusado (já visto no WebKit): tenta o próximo */ }
+    }
+    throw new Error('gravador')
+  }
+
+  // Mesmo fluxo para os dois: grava no app, mostra o tempo e, ao parar, envia para transcrever
+  async function iniciar(midia: 'audio' | 'video') {
+    setErro(''); setCameraNegada(false)
+    const ehVid = midia === 'video'
+    let stream: MediaStream
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const tipo = formatoGravacao()
-      const rec = new MediaRecorder(stream, { mimeType: tipo })
+      stream = await navigator.mediaDevices.getUserMedia(ehVid
+        ? { audio: true, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } }
+        : { audio: true })
+    } catch (e: any) {
+      const nome = e?.name || ''
+      if (ehVid) setCameraNegada(true)   // oferece a câmera nativa do celular, que não depende dessa permissão
+      setErro(nome === 'NotAllowedError' || nome === 'SecurityError'
+        ? (ehVid
+            ? 'O navegador não liberou a câmera para este site. No iPhone: Ajustes › Safari › Câmera (ou Ajustes › Chrome › Câmera) → Permitir, e recarregue a página. Ou filme com a câmera do celular no botão abaixo.'
+            : 'O navegador não liberou o microfone para este site. Permita o acesso ao microfone ou envie um arquivo de áudio.')
+        : nome === 'NotReadableError' || nome === 'AbortError'
+          ? `${ehVid ? 'A câmera' : 'O microfone'} está em uso por outro app. Feche-o e tente de novo.`
+          : nome === 'NotFoundError' || nome === 'OverconstrainedError'
+            ? `Nenhum${ehVid ? 'a câmera' : ' microfone'} encontrad${ehVid ? 'a' : 'o'} neste aparelho.`
+            : `Não foi possível abrir ${ehVid ? 'a câmera' : 'o microfone'} (${nome || e}).`)
+      return
+    }
+    try {
+      const { rec, tipo } = ehVid
+        ? comecarGravacao(stream, formatosGravacaoVideo(), { videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 })
+        : comecarGravacao(stream, [formatoGravacao()].filter(Boolean), {})
+      // Sem tipo informado pelo navegador: o nativo de cada plataforma
+      const base = tipo.split(';')[0] || (ehVid ? (ehIOS ? 'video/mp4' : 'video/webm') : (ehIOS ? 'audio/mp4' : 'audio/webm'))
       pedacos.current = []
       rec.ondataavailable = e => { if (e.data.size > 0) pedacos.current.push(e.data) }
       rec.onstop = () => {
         stream.getTracks().forEach(t => t.stop())
-        const blob = new Blob(pedacos.current, { type: tipo.split(';')[0] })
-        transcrever(blob, `relato.${extensao(tipo)}`)
+        setPrevia(null)
+        transcrever(new Blob(pedacos.current, { type: base }), `relato.${extensao(base)}`)
       }
-      rec.start()
       recRef.current = rec
-      setGravando(true); setSegundos(0)
+      if (ehVid) setPrevia(stream)
+      setGravando(midia); setSegundos(0)
       timer.current = window.setInterval(() => setSegundos(s => s + 1), 1000)
     } catch {
-      setErro('Microfone não autorizado. Permita o acesso ao microfone ou envie um arquivo de áudio.')
+      stream.getTracks().forEach(t => t.stop())
+      if (ehVid) setCameraNegada(true)
+      setErro(ehVid
+        ? 'Este navegador não consegue gravar vídeo dentro do app. Filme com a câmera do celular no botão abaixo.'
+        : 'Este navegador não consegue gravar áudio dentro do app. Envie um arquivo de áudio.')
     }
   }
 
   function parar() {
     if (timer.current) { clearInterval(timer.current); timer.current = null }
     if (recRef.current?.state === 'recording') recRef.current.stop()
-    setGravando(false)
+    setGravando('')
   }
 
   function escolherArquivo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -196,28 +258,50 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
       {/* 1. Captura */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {podeGravarAudio ? (
-          <button type="button" onClick={gravando ? parar : iniciar} disabled={!!ocupado && !gravando}
-            style={btn(gravando ? '#dc2626' : '#1e3a5f')}>
-            {gravando ? `⏹ Parar (${mmss})` : '🎙 Gravar áudio'}
+          <button type="button" onClick={gravando === 'audio' ? parar : () => iniciar('audio')}
+            disabled={!!ocupado || gravando === 'video'}
+            style={{ ...btn(gravando === 'audio' ? '#dc2626' : '#1e3a5f'), opacity: gravando === 'video' ? 0.5 : 1 }}>
+            {gravando === 'audio' ? `⏹ Parar (${mmss})` : '🎙 Gravar áudio'}
           </button>
         ) : (
           <p style={{ margin: 0, padding: 8, background: '#fef9c3', borderRadius: 6, color: '#854d0e', fontSize: 13 }}>
             Gravar áudio exige <strong>https://</strong>
           </p>
         )}
-        {/* Câmera nativa do celular: funciona no iPhone e no Android, mesmo sem a API de gravação */}
-        <label style={{ ...btn(), opacity: ocupado || gravando ? 0.5 : 1 }}>
-          🎥 Gravar vídeo
-          <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
-            onChange={escolherArquivo} disabled={!!ocupado || gravando} />
-        </label>
+        {podeGravarVideo ? (
+          <button type="button" onClick={gravando === 'video' ? parar : () => iniciar('video')}
+            disabled={!!ocupado || gravando === 'audio'}
+            style={{ ...btn(gravando === 'video' ? '#dc2626' : '#1e3a5f'), opacity: gravando === 'audio' ? 0.5 : 1 }}>
+            {gravando === 'video' ? `⏹ Parar (${mmss})` : '🎥 Gravar vídeo'}
+          </button>
+        ) : (
+          /* Sem HTTPS: câmera nativa do celular, que funciona mesmo sem a API de gravação */
+          <label style={{ ...btn(), opacity: ocupado || gravando ? 0.5 : 1 }}>
+            🎥 Gravar vídeo
+            <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
+              onChange={escolherArquivo} disabled={!!ocupado || !!gravando} />
+          </label>
+        )}
+        {previa && (
+          <div style={{ gridColumn: '1 / -1', position: 'relative' }}>
+            <video muted playsInline autoPlay
+              ref={el => { if (el && el.srcObject !== previa) el.srcObject = previa }}
+              style={{ width: '100%', borderRadius: 6, background: '#000', display: 'block' }} />
+            <span style={{ position: 'absolute', top: 8, left: 8, padding: '2px 8px', borderRadius: 4,
+              background: '#dc2626', color: '#fff', fontSize: 14, fontWeight: 600 }}>
+              ● {mmss} / 1:30
+            </span>
+          </div>
+        )}
         <label style={{ ...btn('#e5e7eb', '#000'), gridColumn: '1 / -1', opacity: ocupado || gravando ? 0.5 : 1 }}>
           📁 Enviar áudio ou vídeo do celular
           <input type="file" accept="audio/*,video/*,.mov,.m4a" style={{ display: 'none' }}
-            onChange={escolherArquivo} disabled={!!ocupado || gravando} />
+            onChange={escolherArquivo} disabled={!!ocupado || !!gravando} />
         </label>
       </div>
-      <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>Áudios até 10 MB · vídeos até 90 MB (MP4, MOV/QuickTime, WebM)</p>
+      <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+        Gravação: áudio até 2 min, vídeo até 1min30 · Envio: áudios até 10 MB, vídeos até 90 MB (MP4, MOV/QuickTime, WebM)
+      </p>
 
       {ocupado === 'transcrevendo' && (
         progresso !== null ? (
@@ -233,6 +317,14 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
       )}
       {erro && (
         <p style={{ margin: 0, padding: 10, background: '#fee2e2', borderRadius: 6, color: '#dc2626' }}>{erro}</p>
+      )}
+      {cameraNegada && !ocupado && (
+        /* Câmera nativa do celular: abre o app Câmera e devolve o vídeo, sem a permissão do site */
+        <label style={btn('#1e3a5f')}>
+          🎥 Filmar com a câmera do celular
+          <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
+            onChange={e => { setCameraNegada(false); escolherArquivo(e) }} />
+        </label>
       )}
 
       {/* 2. Revisão e chamado */}
