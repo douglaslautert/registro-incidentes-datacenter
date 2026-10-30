@@ -71,9 +71,11 @@ if [ "$HTTPS" = "1" ]; then
         ok "Certificado autoassinado gerado (nginx/certs/cesup.crt, válido por 825 dias)"
     fi
     cp nginx/ssl.conf.template nginx/conf.d/cesup-ssl.conf
+    # Um endereço só: o HTTP da rede redireciona para HTTPS (exceto localhost e o vigia)
+    cp nginx/redirect-https.inc.template nginx/conf.d/redirect-https.inc
     SCHEME=https; WS=wss
 else
-    rm -f nginx/conf.d/cesup-ssl.conf
+    rm -f nginx/conf.d/cesup-ssl.conf nginx/conf.d/redirect-https.inc
     SCHEME=http; WS=ws
     warn "Sem HTTPS: leitura de QR Code, foto pela câmera e gravação de voz não funcionam fora do servidor"
 fi
@@ -123,5 +125,6 @@ echo ""
 if [ "$HTTPS" = "1" ]; then
     echo -e "  O certificado é autoassinado: no 1º acesso o navegador mostra um aviso."
     echo -e "  Aceite-o, ou instale ${YELLOW}nginx/certs/cesup.crt${NC} como confiável nos celulares/PCs."
+    echo -e "  Endereço único: http://$IP redireciona para https://$IP (localhost e o vigia seguem em HTTP)."
 fi
 echo -e "  Se o servidor tiver firewall, libere as portas 80, 443 e 8081 para a rede local."

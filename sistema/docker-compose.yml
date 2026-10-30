@@ -289,6 +289,9 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
+      # Build na rede do host: em alguns ambientes (ex.: WSL2 em modo espelhado) a rede
+      # bridge do Docker trava downloads grandes do PyPI ("Read timed out")
+      network: host
     image: cesup-api:latest
     container_name: cesup-api
     restart: unless-stopped
@@ -443,12 +446,14 @@ services:
     build:
       context: ./pwa
       dockerfile: Dockerfile
+      network: host   # mesmo motivo do build da API (downloads do npm)
       args:
         # Relativo: o PWA chama a API no mesmo endereço em que foi aberto
         # (localhost, IP da rede local ou domínio), sem precisar de rebuild
         VITE_API_URL: /api
         VITE_WS_URL: ${PUBLIC_WS_URL}/ws
         VITE_KEYCLOAK_URL: ${PUBLIC_URL}/auth
+        VITE_PUBLIC_URL: ${PUBLIC_URL}
         VITE_KEYCLOAK_REALM: cesup
         VITE_KEYCLOAK_CLIENT_ID: incidentes-pwa
     container_name: cesup-pwa-builder
