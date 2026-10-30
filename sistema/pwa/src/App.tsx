@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { AudioChamado } from './components/AudioChamado'
+import { RelatoChamado } from './components/RelatoChamado'
+import { FotoVideo } from './components/FotoVideo'
+import { Evidencias } from './components/Evidencias'
 
 const API = import.meta.env.VITE_API_URL || '/api'
 
@@ -37,7 +39,7 @@ export default function App() {
   const [msgTipo, setMsgTipo]   = useState<'ok'|'err'|'info'>('info')
   const [carregando, setCar]    = useState(false)
   const [incSel, setIncSel]     = useState<string | null>(null)
-  const fotoRef = useRef<HTMLInputElement>(null)
+  const [anexos, setAnexos]     = useState<string[]>([])
   const [form, setForm] = useState({
     ativo_id: '', sintoma: '', sala: '', rack: '',
     seguranca_pessoas: false, confianca: '1.0',
@@ -118,20 +120,14 @@ export default function App() {
     finally { setCar(false) }
   }
 
-  // ── Upload de foto ───────────────────────────────────────────
-  async function enviarFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file) return
-    if (!incSel) { aviso('Selecione um incidente primeiro na aba Abertos', 'err'); return }
-    setCar(true)
-    try {
-      const fd = new FormData(); fd.append('arquivo', file)
-      const r = await fetch(`${API}/v1/evidencias/upload?incidente_id=${incSel}`, { method:'POST', body:fd })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.detail)
-      aviso(`✔ Foto enviada para incidente ${incSel.slice(0,8)}...`, 'ok')
-    } catch(err: any) { aviso(`✗ ${err.message}`, 'err') }
-    finally { setCar(false); if (fotoRef.current) fotoRef.current.value = '' }
-  }
+  // ── Anexos do incidente aberto na lista ──────────────────────
+  useEffect(() => {
+    setAnexos([])
+    if (!incSel || aba !== 'listar') return
+    fetch(`${API}/v1/incidentes/${incSel}`)
+      .then(r => r.ok ? r.json() : { evidencias: [] })
+      .then(d => setAnexos(d.evidencias || [])).catch(() => {})
+  }, [incSel, aba])
 
   // ── Métricas ─────────────────────────────────────────────────
   useEffect(() => {
@@ -145,10 +141,10 @@ export default function App() {
   // ── UI ───────────────────────────────────────────────────────
   const abas: { id: Aba; label: string }[] = [
     { id:'registrar', label:'+ Registrar' },
-    { id:'audio',     label:'🎙 Áudio'     },
+    { id:'audio',     label:'🎙 Áudio e Vídeo' },
     { id:'listar',    label:'📋 Abertos'   },
     { id:'qr',        label:'📷 QR Code'   },
-    { id:'foto',      label:'🖼 Foto'       },
+    { id:'foto',      label:'📷 Foto/vídeo' },
     { id:'metricas',  label:'📊 Métricas'  },
     { id:'links',     label:'🔗 Serviços'  },
   ]
@@ -216,10 +212,10 @@ export default function App() {
         </form>
       )}
 
-      {/* ── Áudio → chamado ───────────────────────────────── */}
+      {/* ── Áudio ou vídeo → chamado ──────────────────────── */}
       {aba === 'audio' && (
-        <AudioChamado api={API} ativoInicial={ativoQr}
-          onCriado={p => { aviso(`✔ Chamado criado pelo áudio — Prioridade: ${p}`, 'ok'); setAtivoQr(null) }} />
+        <RelatoChamado api={API} ativoInicial={ativoQr}
+          onCriado={p => { aviso(`✔ Chamado criado pelo relato — Prioridade: ${p}`, 'ok'); setAtivoQr(null) }} />
       )}
 
       {/* ── Listar ────────────────────────────────────────── */}
@@ -265,6 +261,13 @@ export default function App() {
                     style={btn('#16a34a')}>✓ Fechar</button>
                 </div>
               )}
+              {incSel===i.id && (
+                <div style={{ marginTop:10 }}>
+                  <Evidencias urls={anexos} />
+                  <button onClick={e=>{e.stopPropagation();setAba('foto')}}
+                    style={{ ...btn('#e5e7eb','#000'), marginTop:8, fontSize:14 }}>📷 Anexar foto ou vídeo</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -308,25 +311,7 @@ export default function App() {
 
       {/* ── Foto ──────────────────────────────────────────── */}
       {aba === 'foto' && (
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <p style={{ color:'#6b7280', margin:0 }}>
-            Selecione um incidente na aba <strong>Abertos</strong> (clique nele) e depois envie a foto.
-          </p>
-          {incSel
-            ? <p style={{ padding:10, background:'#eff6ff', borderRadius:6, margin:0 }}>
-                📋 Incidente selecionado: <strong>{incSel.slice(0,16)}...</strong>
-              </p>
-            : <p style={{ padding:10, background:'#fef9c3', borderRadius:6, margin:0, color:'#854d0e' }}>
-                ⚠ Nenhum incidente selecionado — vá em Abertos e clique num incidente.
-              </p>
-          }
-          <label style={{ ...btn(), display:'block', textAlign:'center', cursor:'pointer' }}>
-            📷 Selecionar foto / tirar foto
-            <input ref={fotoRef} type="file" accept="image/jpeg,image/png,image/webp"
-              style={{ display:'none' }} onChange={enviarFoto} />
-          </label>
-          {carregando && <p style={{ color:'#6b7280', textAlign:'center' }}>Enviando foto...</p>}
-        </div>
+        <FotoVideo api={API} incidenteInicial={incSel} onEnviado={m => aviso(m, 'ok')} />
       )}
 
       {/* ── Métricas ──────────────────────────────────────── */}

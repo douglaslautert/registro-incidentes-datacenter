@@ -42,7 +42,7 @@ O script ([`rede-local.sh`](rede-local.sh)):
 3. Reconstrói o PWA e recria Keycloak, Grafana, API e nginx com o novo endereço.
 4. Inclui o endereço nos redirect URIs dos clients do Keycloak.
 
-Depois disso, acesse `https://<IP>` (PWA, `/api/docs`, `/auth`, `/grafana`, `/zabbix/`) e `http://<IP>:8081` (GLPI). A porta 80 continua respondendo em HTTP.
+Depois disso, acesse `https://<IP>` (PWA, `/api/docs`, `/auth`, `/grafana`, `/zabbix/`) e `http://<IP>:8081` (GLPI). O endereço é um só: `http://<IP>` redireciona para `https://<IP>`. Para o navegador, http e https seriam dois sites, cada um com sua cópia do PWA, e um deles acabaria mostrando versão antiga. Seguem em HTTP, sem redirecionar, o `http://localhost` (usado pelo `make install`), o heartbeat do vigia externo e o GLPI na porta 8081.
 
 **Por que HTTPS:** os navegadores só liberam câmera e microfone em HTTPS ou em `localhost`. Sem HTTPS, a leitura de QR Code, a foto e a gravação de voz do PWA não funcionam nos outros aparelhos. O certificado é autoassinado, então no 1º acesso o navegador mostra um aviso. Aceite-o, ou instale `nginx/certs/cesup.crt` como certificado confiável nos aparelhos. Se não precisar dessas funções, use `make rede-local args=--sem-https`.
 

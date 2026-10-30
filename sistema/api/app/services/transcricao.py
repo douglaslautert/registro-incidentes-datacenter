@@ -28,9 +28,21 @@ def _dica_vocabulario() -> str:
     return f"Relato de incidente no datacenter do CESUP. Ativos: {ativos}. Locais: {salas}."
 
 
+def _tem_audio(dados: bytes) -> bool:
+    """O arquivo tem trilha de áudio? Vídeo gravado sem som faria o faster-whisper
+    falhar com IndexError, em vez de uma mensagem clara."""
+    try:
+        import av
+        with av.open(io.BytesIO(dados)) as c:
+            return len(c.streams.audio) > 0
+    except Exception:
+        return True   # na dúvida, deixa o faster-whisper tentar
+
+
 def transcrever_audio(dados: bytes, content_type: str) -> dict:
     """
-    Transcreve áudio (WebM/Opus, MP4/AAC, WAV, OGG, MP3) para texto em português.
+    Transcreve a fala de um áudio (WebM/Opus, MP4/AAC, WAV, OGG, MP3) ou da trilha de
+    áudio de um vídeo (MP4, MOV, WebM) para texto em português.
     Se o faster-whisper não estiver instalado, devolve texto vazio para preenchimento manual.
     """
     resultado = {
@@ -40,6 +52,10 @@ def transcrever_audio(dados: bytes, content_type: str) -> dict:
         "duracao_segundos": None,
     }
     try:
+        if not _tem_audio(dados):
+            resultado["motor"] = "sem-audio"
+            log.info("Arquivo sem trilha de áudio — relato manual")
+            return resultado
         modelo = _carregar_modelo()
         segmentos, info = modelo.transcribe(
             io.BytesIO(dados), language="pt", beam_size=5,

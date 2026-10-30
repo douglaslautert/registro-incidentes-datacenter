@@ -10,3 +10,6 @@ nginx/certs/
 
 # HTTPS da rede local — gerado por rede-local.sh a partir de nginx/ssl.conf.template
 nginx/conf.d/cesup-ssl.conf
+
+# Redirecionamento HTTP → HTTPS — gerado por rede-local.sh
+nginx/conf.d/redirect-https.inc
