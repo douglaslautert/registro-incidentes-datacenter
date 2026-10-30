@@ -1,0 +1,10 @@
+# Redirecionamento HTTP → HTTPS — copiado para conf.d/redirect-https.inc por rede-local.sh.
+# Assim existe um endereço só (https://<IP>): http e https são "sites" diferentes para o
+# navegador, cada um com sua cópia do PWA, e um deles acaba mostrando versão antiga.
+set $para_https 1;
+# install.sh e os scripts de configuração usam http://localhost
+if ($host ~* ^(localhost|127\.0\.0\.1)$) { set $para_https 0; }
+# Vigia externo: outro dispositivo, faz o heartbeat em HTTP simples e não aceita
+# o certificado autoassinado
+if ($request_uri ~ ^/api/v1/heartbeat) { set $para_https 0; }
+if ($para_https) { return 301 https://$host$request_uri; }

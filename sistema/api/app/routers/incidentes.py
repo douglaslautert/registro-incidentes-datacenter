@@ -20,6 +20,7 @@ from app.services.prioridade import calcular_prioridade, inferir_impacto_urgenci
 from app.services.correlacao import calcular_score, calcular_score_completo, decisao
 from app.services.notificacao import notificar_plantao
 from app.services.escalonamento import registrar_acionamento, confirmar_ack, _fila
+from app.services.s3_client import normalizar_url
 from datetime import datetime, timezone, timedelta
 import ulid, logging
 
@@ -249,11 +250,17 @@ async def buscar_incidente(
         try:
             inc = await _buscar_incidente_db(db, incidente_id)
             if inc:
+                # Evidências (fotos, vídeos, áudios) de todos os eventos do incidente
+                r = await db.execute(
+                    select(Evento.evidencias).where(Evento.incidente_id == incidente_id)
+                    .order_by(Evento.recebido_em)
+                )
+                evidencias = [normalizar_url(u) for lista in r.scalars().all() for u in (lista or [])]
                 return {
                     "id":inc.id,"titulo":inc.titulo,"prioridade":inc.prioridade,
                     "status":inc.status,"ativo_id":inc.ativo_id,
                     "aberto_em":inc.aberto_em,"fechado_em":inc.fechado_em,
-                    "local":inc.local,
+                    "local":inc.local,"evidencias":evidencias,
                 }
         except SQLAlchemyError:
             pass
@@ -264,7 +271,7 @@ async def buscar_incidente(
     evs = [e for e in _eventos if e.get("incidente_id") == incidente_id]
     todas_evidencias = []
     for e in evs:
-        todas_evidencias.extend(e.get("evidencias") or [])
+        todas_evidencias.extend(normalizar_url(u) for u in (e.get("evidencias") or []))
     return {**inc, "evidencias": todas_evidencias}
 
 
