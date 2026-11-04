@@ -1,65 +1,117 @@
-"""Tasks Celery — Sprint 4: notificações, escalonamento, reconciliação."""
+"""Tarefas do Celery: reconciliação com o Zabbix (S1), reescalonamento do plantão (S4)
+e análise de fotos e vídeos pelo modelo de visão (S5).
+
+Cada tarefa abre a própria sessão (sessao_isolada): roda num asyncio.run() novo e não pode
+reaproveitar conexões do pool global, presas ao loop de outra execução.
+"""
+import asyncio, logging
 from celery import Celery
 from app.core.config import settings
 
+log = logging.getLogger("tasks")
+
 celery_app = Celery("cesup", broker=settings.REDIS_URL, backend=settings.REDIS_URL)
-
 celery_app.conf.task_routes = {
-    "app.workers.tasks.processar_evento":          {"queue": "default"},
-    "app.workers.tasks.enviar_notificacao_email":  {"queue": "notifications"},
-    "app.workers.tasks.enviar_notificacao_gsm":    {"queue": "notifications"},
-    "app.workers.tasks.reconciliar_zabbix":        {"queue": "default"},
-    "app.workers.tasks.verificar_timeouts":        {"queue": "default"},
+    "app.workers.tasks.enviar_notificacao_email": {"queue": "notifications"},
+    "app.workers.tasks.enviar_notificacao_gsm":   {"queue": "notifications"},
 }
-
+celery_app.conf.task_default_queue = "default"
 celery_app.conf.beat_schedule = {
-    # T4: reconciliação Zabbix a cada 5 minutos
-    "reconciliar-zabbix": {
+    "reconciliar-zabbix-5min": {
         "task": "app.workers.tasks.reconciliar_zabbix",
         "schedule": 300.0,
     },
-    # T6: verificar ACKs pendentes e reescalonar a cada 60s
-    "verificar-timeouts-ack": {
+    "verificar-timeouts-60s": {
         "task": "app.workers.tasks.verificar_timeouts",
         "schedule": 60.0,
     },
 }
 
 
-@celery_app.task(bind=True, max_retries=3)
-def processar_evento(self, evento_id: str):
-    """Normaliza evento: gera embedding e atualiza correlação no banco."""
-    import asyncio
-    from app.services.embedding import gerar_embedding
-
-    async def _run():
-        try:
-            # Buscar evento no banco e gerar embedding
-            from app.database import AsyncSessionLocal
-            from app.models.incidente import Evento
-            from sqlalchemy import select
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(
-                    select(Evento).where(Evento.id == evento_id)
-                )
-                ev = result.scalar_one_or_none()
-                if ev and ev.sintoma:
-                    ev.embedding = gerar_embedding(ev.sintoma)
-                    await db.commit()
-        except Exception as e:
-            import logging
-            logging.getLogger("tasks").warning(f"processar_evento: {e}")
-
+async def _reconciliar() -> dict:
+    """Problemas recentes do Zabbix que não chegaram pelo webhook entram pelo registro comum."""
+    from app.database import sessao_isolada
+    from app.services import registro, inventario
+    from app.services.normalizacao import de_problema_zabbix
+    from app.services.notificacao import disparar
+    from app.services.zabbix_client import zabbix
     try:
-        asyncio.run(_run())
+        problemas = await zabbix.alertas_recentes(minutos=6)
+    except Exception as e:
+        log.warning(f"Zabbix indisponível: {e}")
+        return {"erro": str(e)}
+    novos, notificar = 0, []
+    async with sessao_isolada() as db:
+        await inventario.recarregar(db)
+        for p in problemas:
+            ev, eventid = de_problema_zabbix(p)
+            res = await registro.registrar(db, ev, zabbix_eventid=eventid, status_origem="PROBLEM",
+                                           raw=p, criado_por="zabbix-reconciliacao")
+            if res["decisao_correlacao"] != "duplicado":
+                novos += 1
+                notificar += res["notificar"]
+    await disparar(notificar)
+    if novos:
+        log.info(f"Reconciliação: {novos} alerta(s) do Zabbix sem webhook registrado(s)")
+    return {"problemas": len(problemas), "novos": novos}
+
+
+@celery_app.task
+def reconciliar_zabbix():
+    return asyncio.run(_reconciliar())
+
+
+async def _verificar_timeouts() -> int:
+    from app.database import sessao_isolada
+    from app.services.escalonamento import verificar_timeouts as vt
+    from app.services.notificacao import disparar
+    async with sessao_isolada() as db:
+        notificar = await vt(db)
+    await disparar(notificar)
+    return len(notificar)
+
+
+@celery_app.task
+def verificar_timeouts():
+    """A cada 60 s: acionamentos sem ACK no prazo sobem de nível."""
+    return asyncio.run(_verificar_timeouts())
+
+
+async def _analisar_midia(incidente_id: str, url: str) -> dict | None:
+    from app.database import sessao_isolada
+    from app.models.acionamento import AnaliseMidia
+    from app.services import visao, registro
+    from app.services.s3_client import baixar_evidencia, ROTA_ARQUIVO
+    tipo = registro.tipo_midia(url)
+    if not tipo or not visao.configurado():
+        return None                                  # sem IA: segue sem análise
+    key = url.split(ROTA_ARQUIVO, 1)[-1]
+    obj = await asyncio.to_thread(baixar_evidencia, key)
+    if obj is None:
+        return None
+    dados = await asyncio.to_thread(obj["Body"].read)
+    res = await visao.analisar(dados, tipo, obj.get("ContentType") or "image/jpeg")
+    if res is None:
+        return None
+    async with sessao_isolada() as db:
+        db.add(AnaliseMidia(incidente_id=incidente_id, url=url, tipo=tipo, modelo=res["modelo"],
+                            descricao=res["descricao"], dados=res["dados"]))
+    log.info(f"Análise de {tipo} do incidente {incidente_id}: {res['descricao'][:80]}")
+    return res
+
+
+@celery_app.task(bind=True, max_retries=2)
+def analisar_midia(self, incidente_id: str, url: str):
+    """Sprint 5: LEDs, displays e etiquetas nas fotos; quadros-chave nos vídeos."""
+    try:
+        res = asyncio.run(_analisar_midia(incidente_id, url))
+        return {"analisado": res is not None}
     except Exception as e:
         raise self.retry(exc=e, countdown=60)
 
 
 @celery_app.task(bind=True, max_retries=3)
 def enviar_notificacao_email(self, para: str, assunto: str, corpo: str):
-    """T3: Envia e-mail SMTP institucional."""
-    import asyncio
     from app.services.notificacao import enviar_email
     try:
         asyncio.run(enviar_email(para, assunto, corpo))
@@ -69,45 +121,6 @@ def enviar_notificacao_email(self, para: str, assunto: str, corpo: str):
 
 @celery_app.task(bind=True, max_retries=3)
 def enviar_notificacao_gsm(self, numero: str, mensagem: str):
-    """T4: Envia SMS via modem Gammu."""
     from app.services.notificacao import enviar_sms
-    if not enviar_sms(numero, mensagem):
+    if enviar_sms(numero, mensagem) == "falhou":
         raise self.retry(countdown=30)
-
-
-@celery_app.task
-def gerar_embedding(evento_id: str, sintoma: str, descricao: str = ""):
-    """M4: Gera embedding vetorial do evento para correlação semântica."""
-    from app.services.embedding import gerar_embedding as _gerar
-    vetor = _gerar(sintoma, descricao)
-    # Sprint 6+: persistir no campo embedding da tabela eventos
-    return {"evento_id": evento_id, "dim": len(vetor), "norma": round(sum(v*v for v in vetor)**0.5, 4)}
-
-
-@celery_app.task
-def reconciliar_zabbix():
-    """T4: Poll periódico Zabbix — captura alertas que chegaram sem webhook."""
-    import asyncio
-    from app.services.zabbix_client import zabbix
-
-    async def _run():
-        try:
-            alertas = await zabbix.alertas_recentes(minutos=6)
-            for a in alertas:
-                hosts = a.get("hosts", [{}])
-                host  = hosts[0].get("host", "desconhecido") if hosts else "desconhecido"
-                # Publicar na fila para processamento assíncrono
-                processar_evento.delay(a["eventid"])
-        except Exception as e:
-            import logging
-            logging.getLogger("tasks").warning(f"Zabbix indisponível: {e}")
-
-    asyncio.run(_run())
-
-
-@celery_app.task
-def verificar_timeouts():
-    """T6: Verifica acionamentos sem ACK e reescalona se timeout expirou."""
-    import asyncio
-    from app.services.escalonamento import verificar_timeouts as vt
-    asyncio.run(vt())

@@ -1,10 +1,10 @@
-"""FastAPI — Sprint 6: banco real com lifespan e fallback para memória."""
+"""FastAPI — banco com lifespan e fallback para memória; Sprints 1–6."""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routers import (healthcheck, incidentes, webhook_zabbix,
-                         notificacoes, metricas, evidencias, transcricao, ativos)
+from app.routers import (healthcheck, incidentes, webhook_zabbix, notificacoes, metricas,
+                         evidencias, transcricao, ativos, topologia, ingestao, avaliacao, sistema)
 import logging
 
 log = logging.getLogger("main")
@@ -12,17 +12,16 @@ log = logging.getLogger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicialização: testar conexão com banco."""
+    """Inicialização: testa o banco e carrega o inventário de ativos."""
     try:
-        from app.database import engine
-        from sqlalchemy import text
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        log.info("Banco de dados: conectado")
+        from app.database import AsyncSessionLocal
+        from app.services import inventario
+        async with AsyncSessionLocal() as db:
+            n = await inventario.recarregar(db)
+        log.info(f"Banco de dados: conectado ({n} ativos no inventário)")
     except Exception as e:
         log.warning(f"Banco indisponível — modo memória: {e}")
     yield
-    # Shutdown
     try:
         from app.database import engine
         await engine.dispose()
@@ -32,7 +31,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CESUP Incidentes API",
-    version="1.0.0",
+    version="1.6.0",
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
     lifespan=lifespan,
@@ -49,8 +48,5 @@ app.add_middleware(
 app.include_router(healthcheck.router)
 app.include_router(incidentes.router,      prefix="/api/v1")
 app.include_router(webhook_zabbix.router,  prefix="/api/v1")
-app.include_router(notificacoes.router)
-app.include_router(metricas.router)
-app.include_router(evidencias.router)
-app.include_router(transcricao.router)
-app.include_router(ativos.router)
+for r in (notificacoes, metricas, evidencias, transcricao, ativos, topologia, ingestao, avaliacao, sistema):
+    app.include_router(r.router)

@@ -1,353 +1,174 @@
-"""
-Router de incidentes — Sprint 6: persistência real no PostgreSQL.
-
-Fluxo:
-  1. Calcular prioridade P1–P4
-  2. Correlacionar com incidentes abertos (banco)
-  3. Persistir incidente + evento
-  4. Gerar embedding em background (Celery)
-  5. Notificar plantonista (background)
-  6. Registrar escalonamento com ACK
-"""
+"""Router de incidentes. A lógica de registro e correlação fica em services/registro.py,
+compartilhada com o webhook do Zabbix, a ingestão de e-mail e a reconciliação do worker."""
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_, text
+from sqlalchemy import select, update, func
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timezone
 from app.database import get_db
 from app.models.incidente import Incidente, Evento
+from app.models.acionamento import Acionamento, AnaliseMidia
 from app.schemas.evento import EventoCreate, EventoResponse, IncidenteResponse
-from app.services.prioridade import calcular_prioridade, inferir_impacto_urgencia
-from app.services.correlacao import calcular_score, calcular_score_completo, decisao
-from app.services.notificacao import notificar_plantao
-from app.services.escalonamento import registrar_acionamento, confirmar_ack, _fila
+from app.services import registro
+from app.services.escalonamento import confirmar_ack, atualizar_metricas
+from app.services.notificacao import disparar
 from app.services.s3_client import normalizar_url
-from datetime import datetime, timezone, timedelta
-import ulid, logging
+from app.services.seguranca import Usuario, exigir, REGISTRAR, LER, ATENDER
+import logging
 
 router = APIRouter(tags=["incidentes"])
 log = logging.getLogger("router.incidentes")
 
-ORDEM_PRIORIDADE = {"P1":1,"P2":2,"P3":3,"P4":4}
-
-# ── Estado em memória (fallback quando banco indisponível) ─────
-_incidentes: dict[str,dict] = {}
-_eventos:    list[dict]     = []
-
-def _usar_banco() -> bool:
-    """Detecta se o banco está disponível."""
-    from app.core.config import settings
-    return (settings.DATABASE_URL != "postgresql+asyncpg://x:x@x/x"
-            and "x:x@x" not in settings.DATABASE_URL)
+ORDEM_PRIORIDADE = registro.ORDEM
+ABERTOS = registro.ABERTOS
 
 
-async def _buscar_incidente_db(db: AsyncSession, incidente_id: str) -> Incidente | None:
-    """Busca por id — a PK é composta (id, aberto_em) por causa do particionamento,
-    então db.get(Incidente, id) não serve."""
-    result = await db.execute(select(Incidente).where(Incidente.id == incidente_id))
-    return result.scalars().first()
-
-
-def _calcular_prioridade(payload: EventoCreate) -> str:
-    i, u = inferir_impacto_urgencia(payload.sintoma, payload.fonte)
-    return calcular_prioridade(payload.seguranca_pessoas, i, u, payload.confianca)
-
-
-async def _disparar_notificacoes(iid, pri, titulo, ativo):
-    await notificar_plantao(iid, pri, titulo, ativo)
-
-
-async def _correlacionar_memoria(payload: EventoCreate) -> tuple[str|None,str]:
-    """Correlação usando estado em memória (MVP sem banco)."""
-    local = payload.local.model_dump()
-    for iid, inc in _incidentes.items():
-        if inc["status"] not in ("aberto","em_atendimento"):
-            continue
-        delta = datetime.now(timezone.utc) - inc["aberto_em"]
-        topo  = 1.0 if inc.get("ativo_id")==payload.ativo_id else 0.3
-        score = calcular_score(topo, delta, local, inc.get("local",{}))
-        dec   = decisao(score)
-        if dec in ("anexa","sugere"):
-            return iid, dec
-    return None, "novo"
-
-
-async def _correlacionar_banco(
-    payload: EventoCreate, db: AsyncSession
-) -> tuple[str|None,str]:
-    """Correlação consultando incidentes abertos no banco."""
-    try:
-        local = payload.local.model_dump()
-        janela = datetime.now(timezone.utc) - timedelta(hours=4)
-        result = await db.execute(
-            select(Incidente).where(
-                and_(
-                    Incidente.status.in_(["aberto","em_atendimento"]),
-                    Incidente.aberto_em >= janela,
-                )
-            )
-        )
-        incs = result.scalars().all()
-        for inc in incs:
-            delta = datetime.now(timezone.utc) - inc.aberto_em.replace(tzinfo=timezone.utc)
-            topo  = 1.0 if inc.ativo_id == payload.ativo_id else 0.3
-            score = calcular_score(topo, delta, local, inc.local or {})
-            dec   = decisao(score)
-            if dec in ("anexa","sugere"):
-                return inc.id, dec
-    except SQLAlchemyError as e:
-        log.warning(f"Correlação banco falhou, usando memória: {e}")
-        return await _correlacionar_memoria(payload)
-    return None, "novo"
+async def _buscar(db: AsyncSession, incidente_id: str) -> Incidente | None:
+    """Por id — a PK é composta (id, aberto_em) por causa do particionamento."""
+    return (await db.execute(select(Incidente).where(Incidente.id == incidente_id))).scalars().first()
 
 
 @router.post("/incidentes", response_model=EventoResponse, status_code=201)
-async def registrar_evento(
-    payload: EventoCreate,
-    bg:      BackgroundTasks,
-    db:      AsyncSession = Depends(get_db),
-) -> dict:
-    prioridade  = _calcular_prioridade(payload)
-    evento_id   = str(ulid.new())
-    usar_db     = _usar_banco()
-
-    if usar_db:
-        iid_correlato, dec = await _correlacionar_banco(payload, db)
-    else:
-        iid_correlato, dec = await _correlacionar_memoria(payload)
-
-    local = payload.local.model_dump()
-
-    if dec == "anexa" and iid_correlato:
-        incidente_id = iid_correlato
-        # Recalcular prioridade se novo evento é mais grave
-        if usar_db:
-            try:
-                inc_atual = await _buscar_incidente_db(db, incidente_id)
-                if inc_atual:
-                    p_atual = inc_atual.prioridade
-                    if ORDEM_PRIORIDADE.get(prioridade,9) < ORDEM_PRIORIDADE.get(p_atual,9):
-                        inc_atual.prioridade = prioridade
-                        log.info(f"Prioridade recalculada: {incidente_id} {p_atual}→{prioridade}")
-                        bg.add_task(_disparar_notificacoes, incidente_id,
-                                    prioridade, f"[ESCALADO] {inc_atual.titulo}",
-                                    payload.ativo_id)
-            except SQLAlchemyError as e:
-                log.warning(f"Recálculo banco falhou: {e}")
-        else:
-            inc = _incidentes.get(incidente_id,{})
-            p_atual = inc.get("prioridade","P4")
-            if ORDEM_PRIORIDADE.get(prioridade,9) < ORDEM_PRIORIDADE.get(p_atual,9):
-                inc["prioridade"] = prioridade
-        decisao_str = "anexado"
-    else:
-        incidente_id = str(ulid.new())
-        titulo       = f"[{prioridade}] {payload.sintoma} — {payload.ativo_id}"
-
-        if usar_db:
-            try:
-                inc_db = Incidente(
-                    id=incidente_id, titulo=titulo, prioridade=prioridade,
-                    status="aberto", ativo_id=payload.ativo_id,
-                    aberto_em=datetime.now(timezone.utc), local=local,
-                )
-                db.add(inc_db)
-                await db.flush()
-            except SQLAlchemyError as e:
-                log.warning(f"Persistência banco falhou, usando memória: {e}")
-                await db.rollback()
-                usar_db = False
-
-        if not usar_db:
-            _incidentes[incidente_id] = {
-                "id":incidente_id,"titulo":titulo,"prioridade":prioridade,
-                "status":"aberto","ativo_id":payload.ativo_id,
-                "aberto_em":datetime.now(timezone.utc),"fechado_em":None,
-                "local":local,"total_eventos":1,
-                "sugestao_correlacao": iid_correlato if dec=="sugere" else None,
-            }
-
-        bg.add_task(_disparar_notificacoes, incidente_id, prioridade,
-                    titulo, payload.ativo_id)
-        registrar_acionamento(incidente_id, prioridade, titulo, payload.ativo_id)
-        decisao_str = "novo"
-        log.info(f"Incidente: {incidente_id} [{prioridade}] {'banco' if usar_db else 'memória'}")
-
-    # Persistir evento
-    ev_db_data = {
-        "id":evento_id,"fonte":payload.fonte,"ativo_id":payload.ativo_id,
-        "sintoma":payload.sintoma,"confianca":payload.confianca,
-        "seguranca":payload.seguranca_pessoas,"local":local,
-        "evidencias":payload.evidencias or [],"recebido_em":datetime.now(timezone.utc),
-    }
-    if usar_db:
-        try:
-            ev_db = Evento(**ev_db_data, incidente_id=incidente_id)
-            db.add(ev_db)
-            await db.flush()
-        except SQLAlchemyError as e:
-            log.warning(f"Evento banco falhou: {e}")
-            await db.rollback()
-            _eventos.append({**ev_db_data,"incidente_id":incidente_id})
-    else:
-        _eventos.append({**ev_db_data,"incidente_id":incidente_id})
-
-    # Gerar embedding em background (não bloqueia o response)
-    try:
-        from app.workers.tasks import gerar_embedding as task_emb
-        task_emb.delay(evento_id, payload.sintoma, payload.sintoma)
-    except Exception:
-        pass  # Celery/Redis indisponível em testes — não bloqueia
-
-    return {
-        "id":evento_id,"fonte":payload.fonte,"ativo_id":payload.ativo_id,
-        "sintoma":payload.sintoma,"confianca":payload.confianca,
-        "seguranca_pessoas":payload.seguranca_pessoas,
-        "incidente_id":incidente_id,"prioridade":prioridade,
-        "recebido_em":datetime.now(timezone.utc),
-        "decisao_correlacao":decisao_str,
-    }
+async def registrar_evento(payload: EventoCreate, bg: BackgroundTasks,
+                           db: AsyncSession = Depends(get_db),
+                           u: Usuario = Depends(exigir(REGISTRAR))) -> dict:
+    res = await registro.registrar(db, payload, criado_por=u.id)
+    if res["notificar"]:
+        bg.add_task(disparar, res["notificar"])
+    return res
 
 
 @router.get("/incidentes", response_model=list[IncidenteResponse])
-async def listar_incidentes(
-    status: str = "aberto,em_atendimento",
-    db:     AsyncSession = Depends(get_db),
-):
-    status_filtro = set(s.strip() for s in status.split(","))                     if status != "todos" else None
-
-    if _usar_banco():
-        try:
-            q = select(Incidente)
-            if status_filtro:
-                q = q.where(Incidente.status.in_(status_filtro))
-            result = await db.execute(q)
-            incs = result.scalars().all()
-            return sorted(
-                [IncidenteResponse(
-                    id=i.id, titulo=i.titulo, prioridade=i.prioridade,
-                    status=i.status, ativo_id=i.ativo_id,
-                    aberto_em=i.aberto_em, total_eventos=0,
-                ) for i in incs],
-                key=lambda x: ORDEM_PRIORIDADE.get(x.prioridade,9)
-            )
-        except SQLAlchemyError as e:
-            log.warning(f"Listagem banco falhou, usando memória: {e}")
-
-    filtrados = [i for i in _incidentes.values()
-                 if status_filtro is None or i["status"] in status_filtro]
-    return sorted(
-        [IncidenteResponse(**i) for i in filtrados],
-        key=lambda x: ORDEM_PRIORIDADE.get(x.prioridade,9)
-    )
+async def listar_incidentes(status: str = "aberto,em_atendimento",
+                            db: AsyncSession = Depends(get_db),
+                            u: Usuario = Depends(exigir(LER))):
+    filtro = None if status == "todos" else {s.strip() for s in status.split(",")}
+    try:
+        n_eventos = (select(Evento.incidente_id, func.count().label("n"))
+                     .group_by(Evento.incidente_id).subquery())
+        q = select(Incidente, n_eventos.c.n).outerjoin(n_eventos, n_eventos.c.incidente_id == Incidente.id)
+        if filtro:
+            q = q.where(Incidente.status.in_(filtro))
+        linhas = (await db.execute(q)).all()
+        itens = [IncidenteResponse(id=i.id, titulo=i.titulo, prioridade=i.prioridade, status=i.status,
+                                   ativo_id=i.ativo_id, aberto_em=i.aberto_em, total_eventos=n or 0,
+                                   sugestao_correlacao=i.sugestao_correlacao) for i, n in linhas]
+    except SQLAlchemyError as e:
+        log.warning(f"Listagem no banco falhou, usando memória: {e}")
+        itens = [IncidenteResponse(**{k: i[k] for k in ("id", "titulo", "prioridade", "status",
+                                                         "ativo_id", "aberto_em")},
+                                   total_eventos=sum(1 for e in registro.memoria_eventos
+                                                     if e["incidente_id"] == i["id"]))
+                 for i in registro.memoria_incidentes.values() if not filtro or i["status"] in filtro]
+    return sorted(itens, key=lambda x: (ORDEM_PRIORIDADE.get(x.prioridade, 9), x.aberto_em))
 
 
 @router.get("/incidentes/{incidente_id}")
-async def buscar_incidente(
-    incidente_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    if _usar_banco():
-        try:
-            inc = await _buscar_incidente_db(db, incidente_id)
-            if inc:
-                # Evidências (fotos, vídeos, áudios) de todos os eventos do incidente
-                r = await db.execute(
-                    select(Evento.evidencias).where(Evento.incidente_id == incidente_id)
-                    .order_by(Evento.recebido_em)
-                )
-                evidencias = [normalizar_url(u) for lista in r.scalars().all() for u in (lista or [])]
-                return {
-                    "id":inc.id,"titulo":inc.titulo,"prioridade":inc.prioridade,
-                    "status":inc.status,"ativo_id":inc.ativo_id,
-                    "aberto_em":inc.aberto_em,"fechado_em":inc.fechado_em,
-                    "local":inc.local,"evidencias":evidencias,
-                }
-        except SQLAlchemyError:
-            pass
-    inc = _incidentes.get(incidente_id)
-    if not inc:
+async def buscar_incidente(incidente_id: str, db: AsyncSession = Depends(get_db),
+                           u: Usuario = Depends(exigir(LER))):
+    try:
+        inc = await _buscar(db, incidente_id)
+    except SQLAlchemyError:
+        inc = None
+    if inc is None:
+        m = registro.memoria_incidentes.get(incidente_id)
+        if not m:
+            raise HTTPException(404, "Incidente não encontrado")
+        evs = [e for e in registro.memoria_eventos if e["incidente_id"] == incidente_id]
+        return {**m, "evidencias": [normalizar_url(x) for e in evs for x in e["evidencias"]],
+                "eventos": evs, "analises": [], "acionamentos": []}
+
+    eventos = (await db.execute(select(Evento).where(Evento.incidente_id == incidente_id)
+                                .order_by(Evento.recebido_em))).scalars().all()
+    analises = (await db.execute(select(AnaliseMidia).where(AnaliseMidia.incidente_id == incidente_id)
+                                 .order_by(AnaliseMidia.criado_em))).scalars().all()
+    acs = (await db.execute(select(Acionamento).where(Acionamento.incidente_id == incidente_id)
+                            .order_by(Acionamento.acionado_em))).scalars().all()
+    return {
+        "id": inc.id, "titulo": inc.titulo, "prioridade": inc.prioridade, "status": inc.status,
+        "ativo_id": inc.ativo_id, "aberto_em": inc.aberto_em, "fechado_em": inc.fechado_em,
+        "causa_raiz": inc.causa_raiz, "local": inc.local, "criado_por": inc.criado_por,
+        "sugestao_correlacao": inc.sugestao_correlacao, "mesclado_em": inc.mesclado_em,
+        "evidencias": [normalizar_url(x) for e in eventos for x in (e.evidencias or [])],
+        "eventos": [{"id": e.id, "fonte": e.fonte, "sintoma": e.sintoma, "confianca": e.confianca,
+                     "recebido_em": e.recebido_em, "status_origem": e.status_origem,
+                     "zabbix_eventid": e.zabbix_eventid} for e in eventos],
+        "analises": [{"url": a.url, "tipo": a.tipo, "modelo": a.modelo, "descricao": a.descricao,
+                      "dados": a.dados, "criado_em": a.criado_em} for a in analises],
+        "acionamentos": [{"nivel": a.nivel, "prioridade": a.prioridade, "acionado_em": a.acionado_em,
+                          "prazo_em": a.prazo_em, "ack_em": a.ack_em, "ack_por": a.ack_por,
+                          "escalado": a.escalado} for a in acs],
+    }
+
+
+async def _encerrar(db, incidente_id: str, status: str, causa: str) -> dict:
+    agora = datetime.now(timezone.utc)
+    try:
+        res = await db.execute(update(Incidente).where(Incidente.id == incidente_id)
+                               .values(status=status, causa_raiz=causa, fechado_em=agora))
+        if res.rowcount:
+            # Fechado não reescalona: os acionamentos pendentes param aqui
+            await db.execute(update(Acionamento)
+                             .where(Acionamento.incidente_id == incidente_id, Acionamento.ack_em.is_(None))
+                             .values(escalado=True))
+            await atualizar_metricas(db, incidente_id)
+            return {"msg": "Incidente encerrado", "id": incidente_id, "status": status}
+    except SQLAlchemyError as e:
+        log.warning(f"Encerramento no banco falhou: {e}")
+    m = registro.memoria_incidentes.get(incidente_id)
+    if not m:
         raise HTTPException(404, "Incidente não encontrado")
-    # Agregar evidencias de todos os eventos do incidente
-    evs = [e for e in _eventos if e.get("incidente_id") == incidente_id]
-    todas_evidencias = []
-    for e in evs:
-        todas_evidencias.extend(normalizar_url(u) for u in (e.get("evidencias") or []))
-    return {**inc, "evidencias": todas_evidencias}
+    m.update(status=status, causa_raiz=causa, fechado_em=agora)
+    return {"msg": "Incidente encerrado", "id": incidente_id, "status": status}
 
 
 @router.patch("/incidentes/{incidente_id}/fechar")
-async def fechar_incidente(
-    incidente_id: str, causa_raiz: str = "",
-    db: AsyncSession = Depends(get_db),
-):
-    agora = datetime.now(timezone.utc)
-    if _usar_banco():
-        try:
-            res = await db.execute(
-                update(Incidente)
-                .where(Incidente.id==incidente_id)
-                .values(status="resolvido", causa_raiz=causa_raiz, fechado_em=agora)
-            )
-            if res.rowcount:
-                return {"msg":"Incidente fechado","id":incidente_id}
-        except SQLAlchemyError:
-            pass
-    inc = _incidentes.get(incidente_id)
-    if not inc:
-        raise HTTPException(404, "Incidente não encontrado")
-    inc.update({"status":"resolvido","causa_raiz":causa_raiz,"fechado_em":agora})
-    return {"msg":"Incidente fechado","id":incidente_id}
-
-
-@router.patch("/incidentes/{incidente_id}/ack")
-async def confirmar_ack_incidente(
-    incidente_id: str, usuario_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    if incidente_id not in _incidentes and _usar_banco():
-        try:
-            inc = await _buscar_incidente_db(db, incidente_id)
-            if not inc:
-                raise HTTPException(404, "Incidente não encontrado")
-        except SQLAlchemyError:
-            pass
-    elif incidente_id not in _incidentes and not _usar_banco():
-        raise HTTPException(404, "Incidente não encontrado")
-
-    ok = confirmar_ack(incidente_id, usuario_id)
-    if _usar_banco():
-        try:
-            await db.execute(
-                update(Incidente)
-                .where(Incidente.id==incidente_id)
-                .values(status="em_atendimento")
-            )
-        except SQLAlchemyError:
-            pass
-    if incidente_id in _incidentes:
-        _incidentes[incidente_id]["status"] = "em_atendimento"
-    return {"msg":"ACK registrado","id":incidente_id}
+async def fechar_incidente(incidente_id: str, causa_raiz: str = "",
+                           db: AsyncSession = Depends(get_db), u: Usuario = Depends(exigir(ATENDER))):
+    return await _encerrar(db, incidente_id, "resolvido", causa_raiz)
 
 
 @router.patch("/incidentes/{incidente_id}/falso_positivo")
-async def marcar_falso_positivo(
-    incidente_id: str, motivo: str = "",
-    db: AsyncSession = Depends(get_db),
-):
-    agora = datetime.now(timezone.utc)
-    if _usar_banco():
-        try:
-            res = await db.execute(
-                update(Incidente)
-                .where(Incidente.id==incidente_id)
-                .values(status="falso_positivo", causa_raiz=motivo, fechado_em=agora)
-            )
-            if res.rowcount:
-                return {"msg":"Marcado como falso positivo","id":incidente_id}
-        except SQLAlchemyError:
-            pass
-    inc = _incidentes.get(incidente_id)
-    if not inc:
+async def marcar_falso_positivo(incidente_id: str, motivo: str = "",
+                                db: AsyncSession = Depends(get_db), u: Usuario = Depends(exigir(ATENDER))):
+    return await _encerrar(db, incidente_id, "falso_positivo", motivo)
+
+
+@router.patch("/incidentes/{incidente_id}/ack")
+async def confirmar_ack_incidente(incidente_id: str, usuario_id: str | None = None,
+                                  db: AsyncSession = Depends(get_db), u: Usuario = Depends(exigir(ATENDER))):
+    quem = u.id if u.id != "anonimo" else (usuario_id or "anonimo")
+    try:
+        ok = await confirmar_ack(db, incidente_id, quem)
+    except SQLAlchemyError as e:
+        log.warning(f"ACK no banco falhou: {e}")
+        ok = False
+    if not ok:
+        m = registro.memoria_incidentes.get(incidente_id)
+        if not m:
+            raise HTTPException(404, "Incidente não encontrado")
+        m["status"] = "em_atendimento"
+    return {"msg": "ACK registrado", "id": incidente_id, "por": quem}
+
+
+@router.post("/incidentes/{incidente_id}/mesclar")
+async def mesclar(incidente_id: str, destino: str, db: AsyncSession = Depends(get_db),
+                  u: Usuario = Depends(exigir(ATENDER))):
+    """Aceita a sugestão de correlação (Sprint 6): os eventos de `incidente_id` passam para
+    `destino`, que fica com a prioridade mais grave; o de origem é encerrado como mesclado."""
+    if incidente_id == destino:
+        raise HTTPException(400, "Origem e destino são o mesmo incidente")
+    origem, alvo = await _buscar(db, incidente_id), await _buscar(db, destino)
+    if not origem or not alvo:
         raise HTTPException(404, "Incidente não encontrado")
-    inc.update({"status":"falso_positivo","fechado_em":agora})
-    return {"msg":"Marcado como falso positivo","id":incidente_id}
+    if alvo.status not in ABERTOS:
+        raise HTTPException(409, "O incidente de destino já está encerrado")
+    await db.execute(update(Evento).where(Evento.incidente_id == incidente_id).values(incidente_id=destino))
+    if ORDEM_PRIORIDADE.get(origem.prioridade, 9) < ORDEM_PRIORIDADE.get(alvo.prioridade, 9):
+        alvo.prioridade = origem.prioridade
+    origem.mesclado_em = destino
+    origem.sugestao_correlacao = None
+    await db.flush()
+    await _encerrar(db, incidente_id, "resolvido", f"Mesclado em {destino} por {u.id}")
+    return {"msg": "Incidentes mesclados", "origem": incidente_id, "destino": destino,
+            "prioridade": alvo.prioridade}

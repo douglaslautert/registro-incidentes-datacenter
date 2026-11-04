@@ -14,9 +14,22 @@ def _carregar_modelo():
     with _trava:
         if _modelo is None:
             from faster_whisper import WhisperModel
-            _modelo = WhisperModel(settings.WHISPER_MODEL, device="cpu", compute_type="int8")
-            log.info(f"Modelo faster-whisper '{settings.WHISPER_MODEL}' carregado")
+            dispositivo = dispositivo_whisper()
+            _modelo = WhisperModel(settings.WHISPER_MODEL, device=dispositivo,
+                                   compute_type="float16" if dispositivo == "cuda" else "int8")
+            log.info(f"Modelo faster-whisper '{settings.WHISPER_MODEL}' carregado ({dispositivo})")
     return _modelo
+
+
+def dispositivo_whisper() -> str:
+    """WHISPER_DEVICE=auto usa a GPU (Sprint 5: large-v3 em GPU) se houver; senão, a CPU."""
+    if settings.WHISPER_DEVICE != "auto":
+        return settings.WHISPER_DEVICE
+    try:
+        import ctranslate2
+        return "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
+    except Exception:
+        return "cpu"
 
 
 def _dica_vocabulario() -> str:

@@ -1,10 +1,11 @@
 """Gera os parâmetros JSON do mediatype.create do webhook CESUP (usado pelo zabbix-setup.sh)."""
-import json
+import json, os
 
 # O Zabbix entrega os parâmetros (já com as macros expandidas) como JSON em `value`
 SCRIPT = r"""var p = JSON.parse(value);
 var req = new HttpRequest();
 req.addHeader('Content-Type: application/json');
+if (p.TOKEN) { req.addHeader('X-Token-Servico: ' + p.TOKEN); }
 var body = JSON.stringify({
     eventid: p.eventid, host: p.host, trigger: p.trigger, severity: p.severity,
     status: (p.status === 'RESOLVED' ? 'RECOVERY' : p.status),
@@ -18,8 +19,11 @@ return 'OK';"""
 
 PARAMETERS = [
     {"name": "URL",       "value": "http://api:8000/api/v1/webhook/zabbix"},
+    # Token de serviço da API (TOKEN_SERVICO do .env); vazio = sem cabeçalho
+    {"name": "TOKEN",     "value": os.environ.get("TOKEN_SERVICO", "")},
     {"name": "eventid",   "value": "{EVENT.ID}"},
-    {"name": "host",      "value": "{HOST.NAME}"},
+    # Nome técnico do host (não o visível): é ele que casa com o ativo_id do inventário
+    {"name": "host",      "value": "{HOST.HOST}"},
     {"name": "trigger",   "value": "{EVENT.NAME}"},
     {"name": "severity",  "value": "{EVENT.SEVERITY}"},
     {"name": "status",    "value": "{EVENT.STATUS}"},
@@ -35,6 +39,7 @@ MESSAGE_TEMPLATES = [
 print(json.dumps({
     "name": "CESUP Incidentes",
     "type": 4,
+    "status": 0,                 # habilitada: sem isso o Zabbix 7 cria a mídia desabilitada
     "timeout": "10s",
     "parameters": PARAMETERS,
     "script": SCRIPT,
