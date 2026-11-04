@@ -1,7 +1,7 @@
 """Leva o realm cesup ao que as Sprints 2 em diante pedem. Idempotente.
 
 O --import-realm só vale na primeira subida: em instalações existentes, este script cria o
-que faltar (perfis, usuários de teste, client de scripts) e, com LDAP_URL definido, federa o
+que faltar (perfis, grupos por perfil, usuários de teste, client de scripts) e, com LDAP_URL definido, federa o
 LDAP institucional. Só biblioteca padrão; reaproveita as funções do redirects.py.
 
 Variáveis: KC_URL, KC_ADMIN_USER, KC_ADMIN_PASSWORD, REALM_JSON (padrão: realm-cesup.json
@@ -41,6 +41,27 @@ def garantir_clients(t):
                 atual["attributes"] = attrs
                 req("PUT", f"{BASE}/clients/{atual['id']}", t, data=atual)
                 print("client incidentes-pwa: PKCE e logout ajustados")
+
+
+def grupo(t, nome):
+    return next((g for g in req("GET", f"{BASE}/groups?search={urllib.parse.quote(nome)}&exact=true", t)
+                 if g["name"] == nome), None)
+
+
+def garantir_grupos(t):
+    """Um grupo por perfil: para dar o perfil a alguém, basta pôr a pessoa no grupo."""
+    for g in MODELO.get("groups", []):
+        atual = grupo(t, g["name"])
+        if not atual:
+            req("POST", f"{BASE}/groups", t, data={"name": g["name"]})
+            atual = grupo(t, g["name"])
+            print(f"grupo criado: {g['name']}")
+        tem = {r["name"] for r in req("GET", f"{BASE}/groups/{atual['id']}/role-mappings/realm", t)}
+        faltam = [p for p in g["realmRoles"] if p not in tem]
+        if faltam:
+            req("POST", f"{BASE}/groups/{atual['id']}/role-mappings/realm", t,
+                data=[req("GET", f"{BASE}/roles/{p}", t) for p in faltam])
+            print(f"grupo {g['name']}: perfil {', '.join(faltam)}")
 
 
 def garantir_usuarios(t):
@@ -103,6 +124,7 @@ def federar_ldap(t):
 def main():
     t = token_admin()
     garantir_papeis(t)
+    garantir_grupos(t)
     garantir_clients(t)
     garantir_usuarios(t)
     federar_ldap(t)

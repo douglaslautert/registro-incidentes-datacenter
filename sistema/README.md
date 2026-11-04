@@ -95,6 +95,8 @@ Se não aparecer nenhuma linha com o IP do celular, a conexão está sendo bloqu
 - **Login obrigatório:** com `AUTH_OBRIGATORIA=true` no `.env`, a API recusa quem não fez login (HTTP 401). Use assim em produção.
 - **Login opcional:** com `false`, quem não se identifica age como anônimo, e os testes do artefato rodam sem login.
 - **Instalação já existente:** o `make keycloak-config` cria no realm o que faltar (perfis, usuários e client de scripts).
+- **Grupos:** há um grupo por perfil no realm `cesup` (Tecnicos internos, Terceirizados, Plantonistas, Gestores, Somente leitura, Administradores). Para dar um perfil, ponha a pessoa no grupo: no console, **Users → usuário → Groups → Join Group**.
+- **Novo usuário:** `make usuario nome=maria perfil=tecnico-interno` cria o usuário no realm `cesup`, no grupo do perfil, com senha temporária mostrada no terminal; no primeiro login a pessoa escolhe a dela. Vários perfis: `perfil=tecnico-interno,plantonista`. `make senha nome=maria` define uma senha definitiva. Pelo console do Keycloak, crie sempre no realm **cesup**, não no master.
 - **LDAP institucional:** preencha `LDAP_URL`, `LDAP_BIND_DN`, `LDAP_BIND_CREDENTIAL` e `LDAP_USERS_DN` e rode `make keycloak-config`. Quem entra pelo LDAP recebe o perfil `LDAP_PAPEL_PADRAO`.
 
 **Integrações internas.** O webhook do Zabbix, a ingestão de e-mail (`POST /api/v1/ingestao/email`) e scripts usam o `TOKEN_SERVICO`, gerado pelo `install.sh`, no cabeçalho `X-Token-Servico`. O `make zabbix-setup` atualiza o webhook com o token.

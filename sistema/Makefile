@@ -1,4 +1,4 @@
-.PHONY: keycloak-config test install uninstall up down restart logs ps build clean migrate db sh \
+.PHONY: senha usuario keycloak-config test install uninstall up down restart logs ps build clean migrate db sh \
         rede-local glpi-setup garage-setup zabbix-setup garage-key garage-status health zabbix-logs glpi-logs glpi-token
 
 # Instalação completa (primeira vez; pode ser repetida)
@@ -53,6 +53,15 @@ migrate:
 # Perfis, usuários de teste, client de scripts e federação LDAP no Keycloak — idempotente
 keycloak-config:
 	set -a; . ./.env; set +a; KC_URL=http://localhost/auth python3 keycloak/configurar.py
+
+# Usuário do PWA no realm cesup: make usuario nome=maria perfil=tecnico-interno [email=...]
+usuario:
+	@set -a; . ./.env; set +a; KC_URL=http://localhost/auth nome="$(nome)" perfil="$(perfil)" \
+	    email="$(email)" nome_completo="$(nome_completo)" python3 keycloak/usuario.py
+
+# Senha definitiva de um usuário do PWA, digitada sem aparecer: make senha nome=douglas
+senha:
+	@set -a; . ./.env; set +a; KC_URL=http://localhost/auth nome="$(nome)" python3 keycloak/senha.py
 
 # Testes da API num banco separado (incidentes_teste)
 test:

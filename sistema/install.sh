@@ -230,9 +230,9 @@ else
             *)   warn "Importação do realm retornou HTTP $HTTP — verifique em http://localhost/auth" ;;
         esac
     fi
-    # Perfis da Sprint 2, usuários de teste, client de scripts e, se LDAP_URL, o LDAP
+    # Perfis da Sprint 2, grupos por perfil, usuários de teste, client de scripts e, se LDAP_URL, o LDAP
     set -a; source .env; set +a
-    KC_URL="$KC_URL" python3 keycloak/configurar.py | sed 's/^/      /'         && ok "Realm cesup conferido (perfis, usuários e LDAP)"         || warn "Configuração do realm falhou — rode: make keycloak-config"
+    KC_URL="$KC_URL" python3 keycloak/configurar.py | sed 's/^/      /'         && ok "Realm cesup conferido (perfis, grupos, usuários e LDAP)"         || warn "Configuração do realm falhou — rode: make keycloak-config"
 fi
 
 # ══════════════════════════════════════════════════════════════
@@ -308,9 +308,15 @@ if [ "$BASE_HOST" = "localhost" ]; then
     echo -e "  ${BLUE}Acesso pela rede local:${NC} rode ${YELLOW}make rede-local${NC} (usa o IP do servidor + HTTPS)"
     echo ""
 fi
-echo -e "  ${BLUE}Usuários de teste (Keycloak):${NC}"
-echo -e "    tecnico / tecnico123"
-echo -e "    gestor  / gestor123"
+echo -e "  ${BLUE}Usuários de teste do PWA (realm cesup, um por perfil):${NC}"
+echo -e "    tecnico, terceirizado, plantonista, gestor, leitura, administrador"
+echo -e "    senha: o nome do usuário seguido de 123 (ex.: tecnico123) — troque antes do uso real"
+echo ""
+echo -e "  ${BLUE}Perfis e grupos:${NC} um grupo por perfil no realm cesup"
+echo -e "    Tecnicos internos · Terceirizados · Plantonistas · Gestores · Somente leitura · Administradores"
+echo -e "    Novo usuário: ${YELLOW}make usuario nome=maria perfil=tecnico-interno${NC} (põe no grupo, senha temporária)"
+echo -e "    Senha fixa:   ${YELLOW}make senha nome=maria${NC}"
+echo -e "    No console do Keycloak, crie usuários no realm ${YELLOW}cesup${NC} (não no master) e use Groups → Join Group"
 echo ""
 echo -e "  ${BLUE}Comandos úteis:${NC}"
 echo -e "    ${YELLOW}make ps${NC}        — status de todos os containers"

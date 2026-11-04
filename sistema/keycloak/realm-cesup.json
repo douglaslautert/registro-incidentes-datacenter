@@ -59,6 +59,14 @@
       { "name": "admin",            "description": "Administração do sistema — todas as ações" }
     ]
   },
+  "groups": [
+    { "name": "Tecnicos internos", "realmRoles": ["tecnico-interno"] },
+    { "name": "Terceirizados",     "realmRoles": ["terceirizado"] },
+    { "name": "Plantonistas",      "realmRoles": ["plantonista"] },
+    { "name": "Gestores",          "realmRoles": ["gestor"] },
+    { "name": "Somente leitura",   "realmRoles": ["somente-leitura"] },
+    { "name": "Administradores",   "realmRoles": ["admin"] }
+  ],
   "users": [
     {
       "username": "tecnico", "enabled": true, "email": "tecnico@cesup.ufrgs.br",
