@@ -82,7 +82,9 @@ fi
 
 set_env PUBLIC_URL    "$SCHEME://$IP"
 set_env PUBLIC_WS_URL "$WS://$IP"
-set_env KC_HOSTNAME   "$IP"
+# Keycloak sem host fixo: responde no endereço usado (IP pela rede, localhost no servidor).
+# Fixar o IP aqui quebrava o login por http://localhost
+set_env KC_HOSTNAME   ""
 PUBLIC_URL="$SCHEME://$IP"
 ok ".env atualizado: PUBLIC_URL=$PUBLIC_URL"
 
