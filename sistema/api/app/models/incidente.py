@@ -38,6 +38,9 @@ class Incidente(Base):
     fechado_em  = Column(DateTime(timezone=True))
     criado_por  = Column(String)
     local       = Column(JSONB)
+    fingerprint = Column(String)                  # S3: deduplicação (ativo + sintoma)
+    sugestao_correlacao = Column(String)          # S6: score entre 0,45 e 0,75 → sugere
+    mesclado_em = Column(String)                  # incidente que absorveu este
 
     eventos = relationship("Evento", back_populates="incidente",
                            primaryjoin="Incidente.id == foreign(Evento.incidente_id)",
@@ -58,7 +61,10 @@ class Evento(Base):
     evidencias   = Column(ARRAY(Text), default=list)
     recebido_em  = Column(DateTime(timezone=True), default=datetime.utcnow)
     embedding    = Column(Vector(1024))  # pgvector — correlação semântica
+    embedding_modelo = Column(String)    # só se comparam embeddings do mesmo modelo
+    fingerprint  = Column(String)
     zabbix_eventid = Column(String)
+    status_origem  = Column(String)      # PROBLEM | RECOVERY (Zabbix)
     raw_payload    = Column(JSONB)
 
     incidente    = relationship("Incidente", back_populates="eventos",

@@ -1,5 +1,5 @@
 name: cesup
-x-api-env:
+x-api-env: &api-env
   DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
   REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
   S3_ENDPOINT: http://garage:3900
@@ -26,6 +26,19 @@ x-api-env:
   LOG_LEVEL: INFO
   ENVIRONMENT: production
   ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+  AUTH_OBRIGATORIA: ${AUTH_OBRIGATORIA:-false}
+  TOKEN_SERVICO: ${TOKEN_SERVICO:-}
+  PLANTAO_EMAIL: ${PLANTAO_EMAIL:-}
+  PLANTAO_ESCALONAMENTO_PHONE: ${PLANTAO_ESCALONAMENTO_PHONE:-}
+  PLANTAO_ESCALONAMENTO_EMAIL: ${PLANTAO_ESCALONAMENTO_EMAIL:-}
+  PUBLIC_URL: ${PUBLIC_URL}
+  WHISPER_MODEL: ${WHISPER_MODEL:-base}
+  WHISPER_DEVICE: ${WHISPER_DEVICE:-auto}
+  VISION_URL: ${VISION_URL:-}
+  VISION_MODEL: ${VISION_MODEL:-Qwen2-VL-7B-Instruct}
+  EMBEDDINGS_URL: ${EMBEDDINGS_URL:-}
+  EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-bge-m3}
+  IA_API_KEY: ${IA_API_KEY:-}
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -295,33 +308,7 @@ services:
     image: cesup-api:latest
     container_name: cesup-api
     restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
-      REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
-      S3_ENDPOINT: http://garage:3900
-      S3_BUCKET: evidencias
-      S3_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
-      S3_SECRET_KEY: ${GARAGE_SECRET_KEY}
-      KEYCLOAK_URL: http://keycloak:8080/auth
-      KEYCLOAK_REALM: cesup
-      KEYCLOAK_CLIENT_ID: incidentes-api
-      KEYCLOAK_CLIENT_SECRET: ${KC_CLIENT_SECRET}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      PLANTAO_PHONE: ${PLANTAO_PHONE}
-      ZABBIX_URL: http://zabbix-web:8080
-      ZABBIX_USER: ${ZABBIX_USER}
-      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
-      GLPI_URL: http://glpi:80
-      GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
-      GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
-      SECRET_KEY: ${SECRET_KEY}
-      VIGIA_TOKEN: ${VIGIA_TOKEN}
-      LOG_LEVEL: INFO
-      ENVIRONMENT: production
-      ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+    environment: *api-env
     networks:
     - cesup-net
     depends_on:
@@ -349,33 +336,7 @@ services:
     restart: unless-stopped
     command: celery -A app.workers.tasks.celery_app worker --loglevel=info --concurrency=4
       -Q default,notifications
-    environment:
-      DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
-      REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
-      S3_ENDPOINT: http://garage:3900
-      S3_BUCKET: evidencias
-      S3_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
-      S3_SECRET_KEY: ${GARAGE_SECRET_KEY}
-      KEYCLOAK_URL: http://keycloak:8080/auth
-      KEYCLOAK_REALM: cesup
-      KEYCLOAK_CLIENT_ID: incidentes-api
-      KEYCLOAK_CLIENT_SECRET: ${KC_CLIENT_SECRET}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      PLANTAO_PHONE: ${PLANTAO_PHONE}
-      ZABBIX_URL: http://zabbix-web:8080
-      ZABBIX_USER: ${ZABBIX_USER}
-      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
-      GLPI_URL: http://glpi:80
-      GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
-      GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
-      SECRET_KEY: ${SECRET_KEY}
-      VIGIA_TOKEN: ${VIGIA_TOKEN}
-      LOG_LEVEL: INFO
-      ENVIRONMENT: production
-      ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+    environment: *api-env
     networks:
     - cesup-net
     depends_on:
@@ -387,33 +348,7 @@ services:
     container_name: cesup-beat
     restart: unless-stopped
     command: celery -A app.workers.tasks.celery_app beat --loglevel=info
-    environment:
-      DATABASE_URL: postgresql+asyncpg://cesup:${POSTGRES_PASSWORD}@postgres:5432/incidentes
-      REDIS_URL: redis://:${VALKEY_PASSWORD}@valkey:6379/0
-      S3_ENDPOINT: http://garage:3900
-      S3_BUCKET: evidencias
-      S3_ACCESS_KEY: ${GARAGE_ACCESS_KEY}
-      S3_SECRET_KEY: ${GARAGE_SECRET_KEY}
-      KEYCLOAK_URL: http://keycloak:8080/auth
-      KEYCLOAK_REALM: cesup
-      KEYCLOAK_CLIENT_ID: incidentes-api
-      KEYCLOAK_CLIENT_SECRET: ${KC_CLIENT_SECRET}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      PLANTAO_PHONE: ${PLANTAO_PHONE}
-      ZABBIX_URL: http://zabbix-web:8080
-      ZABBIX_USER: ${ZABBIX_USER}
-      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
-      GLPI_URL: http://glpi:80
-      GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
-      GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
-      SECRET_KEY: ${SECRET_KEY}
-      VIGIA_TOKEN: ${VIGIA_TOKEN}
-      LOG_LEVEL: INFO
-      ENVIRONMENT: production
-      ALLOWED_ORIGINS: '["${PUBLIC_URL}"]'
+    environment: *api-env
     networks:
     - cesup-net
     depends_on:

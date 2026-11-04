@@ -87,6 +87,54 @@ docker logs --since 5m cesup-nginx 2>&1 | tail -20
 
 Se não aparecer nenhuma linha com o IP do celular, a conexão está sendo bloqueada antes do WSL. Revise o firewall do antivírus (passo 3) e verifique se o roteador não tem isolamento entre clientes ("AP isolation" ou rede de convidados).
 
+## Sprints 1–6: o que o sistema faz e como configurar
+
+**Login e perfis (Sprint 2).** O PWA entra pelo Keycloak (OIDC com PKCE) e a API confere o token em cada chamada.
+- **Perfis:** técnico interno, terceirizado, gestor, plantonista, somente leitura e admin. Cada ação exige um deles. Por exemplo, o gestor consulta e vê métricas mas não registra, e só técnico e plantonista dão ACK.
+- **Usuários de teste:** há um por perfil em [`keycloak/realm-cesup.json`](keycloak/realm-cesup.json).
+- **Login obrigatório:** com `AUTH_OBRIGATORIA=true` no `.env`, a API recusa quem não fez login (HTTP 401). Use assim em produção.
+- **Login opcional:** com `false`, quem não se identifica age como anônimo, e os testes do artefato rodam sem login.
+- **Instalação já existente:** o `make keycloak-config` cria no realm o que faltar (perfis, usuários e client de scripts).
+- **LDAP institucional:** preencha `LDAP_URL`, `LDAP_BIND_DN`, `LDAP_BIND_CREDENTIAL` e `LDAP_USERS_DN` e rode `make keycloak-config`. Quem entra pelo LDAP recebe o perfil `LDAP_PAPEL_PADRAO`.
+
+**Integrações internas.** O webhook do Zabbix, a ingestão de e-mail (`POST /api/v1/ingestao/email`) e scripts usam o `TOKEN_SERVICO`, gerado pelo `install.sh`, no cabeçalho `X-Token-Servico`. O `make zabbix-setup` atualiza o webhook com o token.
+
+**Zabbix (Sprint 1).**
+- **PROBLEM:** abre o incidente ou o anexa a um existente. Reenviar o mesmo alerta não duplica nada.
+- **RECOVERY:** fecha sozinho o incidente que só tinha alertas do Zabbix. Se uma pessoa também relatou o problema, o incidente fica aberto.
+- **Reconciliação:** a cada 5 min, alertas que não chegaram pelo webhook entram pela API JSON-RPC.
+- **Topologia:** as dependências (PDU → rack → servidor, switch → servidor) ficam em `/api/v1/topologia` e entram na correlação.
+
+**Deduplicação e correlação (Sprints 3 e 6).** Todo evento passa para o mesmo formato canônico, venha do PWA, do Zabbix ou de e-mail.
+1. O mesmo sintoma no mesmo ativo é anexado ao incidente aberto (fingerprint).
+2. Nos outros casos, o score combina topologia, tempo, local e semântica (embeddings no pgvector):
+   - **≥ 0,75:** anexa ao incidente existente;
+   - **entre 0,45 e 0,75:** abre um incidente novo e sugere o parecido, com o botão **Mesclar** no PWA;
+   - **< 0,45:** abre um incidente novo.
+
+Para medir a precisão (meta ≥ 85%):
+1. Baixe `GET /api/v1/avaliacao/pares.csv`.
+2. Dois técnicos rotulam cada par.
+3. Envie o arquivo para `POST /api/v1/avaliacao/resultado`, que devolve a precisão, a revocação e a concordância entre os técnicos (kappa).
+
+**Fila offline (Sprint 3).** Sem conexão, o chamado fica guardado no celular e é enviado quando a rede volta.
+
+**Plantão (Sprint 4).**
+- **Canais:** P1 e P2 vão por SMS, P1 também por ligação (modem GSM), e todas as prioridades por e-mail.
+- **Destinatários:** `PLANTAO_PHONE` e `PLANTAO_EMAIL`, que aceitam vários valores separados por vírgula.
+- **Reescalonamento:** sem ACK no prazo (P1 10 min, P2 30, P3 120), o alerta sobe de nível e entra o 2º nível do plantão (`PLANTAO_ESCALONAMENTO_*`).
+- **Fila no banco:** a fila de ACK fica na tabela `acionamentos`, que o worker confere a cada 60 s.
+- **MTTA:** vai do acionamento ao primeiro ACK.
+
+**IA no cluster GPU (Sprints 5 e 6), opcional.** Os serviços usam APIs compatíveis com a OpenAI, como o vLLM.
+- **Visão:** `VISION_URL` liga a análise de fotos e de quadros-chave de vídeo (LEDs, displays, etiquetas).
+- **Embeddings:** `EMBEDDINGS_URL` usa o bge-m3.
+- **Sem GPU:** o sistema segue funcionando, sem a análise de imagens e com embeddings locais.
+- **Transcrição na GPU:** com GPU, use `WHISPER_MODEL=large-v3` e faça o rebuild da API.
+- **Status:** `GET /api/v1/ia/status` mostra o que está ativo.
+
+**Testes.** `make test` roda os testes da API num banco separado (`incidentes_teste`). O banco de produção não é tocado. O banco de teste é criado com o schema anterior, e a migração mais recente roda sobre ele.
+
 ## Vigia externo
 
 O vigia ([`vigia/`](vigia/)) roda em outro dispositivo, com 4G/GSM, e consulta a cada 60 s:

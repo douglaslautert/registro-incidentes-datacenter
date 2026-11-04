@@ -2,6 +2,7 @@
 // O áudio e o vídeo ficam guardados no S3 e anexados ao chamado (do vídeo, também o áudio extraído).
 import { useEffect, useRef, useState } from 'react'
 import { Evidencias } from './Evidencias'
+import { postarOuGuardar } from '../filaOffline'
 
 interface Ativo { ativo_id: string; nome: string; sala: string; rack?: string }
 interface Sugestao {
@@ -211,21 +212,17 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
   async function criarChamado(e: React.FormEvent) {
     e.preventDefault(); setOcupado('enviando'); setErro('')
     try {
-      const r = await fetch(`${api}/v1/incidentes`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fonte: 'pessoa',
-          ativo_id: campos.ativo_id,
-          sintoma: texto.trim(),
-          local: { sala: campos.sala, rack: campos.rack || null },
-          confianca: 1.0,                    // relato revisado pelo técnico
-          seguranca_pessoas: campos.seguranca_pessoas,
-          evidencias: anexos,
-        }),
+      const r = await postarOuGuardar(`${api}/v1/incidentes`, {
+        fonte: 'pessoa',
+        ativo_id: campos.ativo_id,
+        sintoma: texto.trim(),
+        local: { sala: campos.sala, rack: campos.rack || null },
+        confianca: 1.0,                    // relato revisado pelo técnico
+        seguranca_pessoas: campos.seguranca_pessoas,
+        evidencias: anexos,
       })
-      const d = await r.json()
-      if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'Erro ao criar chamado')
-      onCriado(d.prioridade)
+      // Sem rede, o chamado fica guardado no aparelho e sai quando a conexão voltar
+      onCriado(r.enviado ? r.dados.prioridade : 'guardado no aparelho (sem conexão)')
       setTexto(''); setAnexos([]); setPrio(''); setRevisar(false); setVideo(false)
       setCampos({ ativo_id: ativoInicial?.ativo_id || '', sala: ativoInicial?.sala || '', rack: ativoInicial?.rack || '', seguranca_pessoas: false })
     } catch (e: any) {

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { RelatoChamado } from './components/RelatoChamado'
 import { FotoVideo } from './components/FotoVideo'
 import { Evidencias } from './components/Evidencias'
+import { usuario, entrar, sair, pode, loginDisponivel } from './auth'
+import { postarOuGuardar, enviarPendentes } from './filaOffline'
 
 const API = import.meta.env.VITE_API_URL || '/api'
 
@@ -15,10 +17,15 @@ const STATUS_COR: Record<string, string> = {
 
 type Aba = 'registrar' | 'audio' | 'listar' | 'qr' | 'foto' | 'metricas' | 'links'
 
+// Perfis da Sprint 2 que podem cada ação (admin pode tudo; sem login, tudo liberado)
+const REGISTRAR = ['tecnico-interno', 'terceirizado', 'plantonista']
+const ATENDER   = ['tecnico-interno', 'plantonista']
+const METRICAS  = ['gestor', 'tecnico-interno', 'plantonista', 'somente-leitura']
+
 interface Incidente {
-  id: string; prioridade: string; status: string
-  ativo_id: string; sintoma: string; aberto_em: string
-  confianca?: number
+  id: string; titulo: string; prioridade: string; status: string
+  ativo_id: string; aberto_em: string; total_eventos: number
+  sugestao_correlacao?: string | null
 }
 interface Metrica {
   total_incidentes: number; abertos: number; fonte: string
@@ -30,7 +37,8 @@ interface Ativo {
 }
 
 export default function App() {
-  const [aba, setAba]           = useState<Aba>('registrar')
+  const eu = usuario()
+  const [aba, setAba]           = useState<Aba>(pode(...REGISTRAR) ? 'registrar' : 'listar')
   const [incidentes, setIncs]   = useState<Incidente[]>([])
   const [metricas, setMet]      = useState<Metrica | null>(null)
   const [ativoQr, setAtivoQr]   = useState<Ativo | null>(null)
@@ -54,21 +62,18 @@ export default function App() {
   async function registrar(e: React.FormEvent) {
     e.preventDefault(); setCar(true)
     try {
-      const res = await fetch(`${API}/v1/incidentes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fonte: 'pessoa',
-          ativo_id: form.ativo_id || ativoQr?.ativo_id,
-          sintoma: form.sintoma,
-          local: { sala: form.sala || ativoQr?.sala, rack: form.rack || ativoQr?.rack || null },
-          confianca: parseFloat(form.confianca) || 1.0,
-          seguranca_pessoas: form.seguranca_pessoas,
-        }),
+      const r = await postarOuGuardar(`${API}/v1/incidentes`, {
+        fonte: 'pessoa',
+        ativo_id: form.ativo_id || ativoQr?.ativo_id,
+        sintoma: form.sintoma,
+        local: { sala: form.sala || ativoQr?.sala, rack: form.rack || ativoQr?.rack || null },
+        confianca: parseFloat(form.confianca) || 1.0,
+        seguranca_pessoas: form.seguranca_pessoas,
       })
-      const d = await res.json()
-      if (!res.ok) throw new Error(d.detail || 'Erro')
-      aviso(`✔ Incidente criado — Prioridade: ${d.prioridade}`, 'ok')
+      if (!r.enviado) aviso('📴 Sem conexão: o chamado ficou guardado no aparelho e será enviado quando a rede voltar', 'info')
+      else aviso(r.dados.decisao_correlacao === 'deduplicado' || r.dados.decisao_correlacao === 'anexado'
+        ? `✔ Anexado a um incidente já aberto — Prioridade: ${r.dados.prioridade}`
+        : `✔ Incidente criado — Prioridade: ${r.dados.prioridade}`, 'ok')
       setForm({ ativo_id:'', sintoma:'', sala:'', rack:'', seguranca_pessoas:false, confianca:'1.0' })
       setAtivoQr(null)
     } catch(err: any) {
@@ -87,8 +92,16 @@ export default function App() {
   }
 
   async function ack(id: string) {
-    await fetch(`${API}/v1/incidentes/${id}/ack?usuario_id=tecnico-pwa`, { method:'PATCH' })
+    await fetch(`${API}/v1/incidentes/${id}/ack?usuario_id=${encodeURIComponent(eu?.id || 'tecnico-pwa')}`, { method:'PATCH' })
     carregar()
+  }
+
+  async function mesclar(id: string, destino: string) {
+    if (!confirm('Juntar este incidente ao sugerido? Os eventos passam para o outro e este é encerrado.')) return
+    const r = await fetch(`${API}/v1/incidentes/${id}/mesclar?destino=${encodeURIComponent(destino)}`, { method:'POST' })
+    const d = await r.json().catch(() => ({}))
+    aviso(r.ok ? `✔ Incidentes mesclados — Prioridade: ${d.prioridade}` : `✗ ${d.detail || 'Não foi possível mesclar'}`, r.ok ? 'ok' : 'err')
+    setIncSel(null); carregar()
   }
 
   async function fechar(id: string) {
@@ -129,6 +142,16 @@ export default function App() {
       .then(d => setAnexos(d.evidencias || [])).catch(() => {})
   }, [incSel, aba])
 
+  // ── Fila offline: envia o que ficou guardado ao abrir e quando a rede volta ──
+  useEffect(() => {
+    const enviar = () => enviarPendentes().then(n => {
+      if (n) aviso(`✔ ${n} chamado(s) guardado(s) sem conexão foram enviados`, 'ok')
+    })
+    enviar()
+    window.addEventListener('online', enviar)
+    return () => window.removeEventListener('online', enviar)
+  }, [])
+
   // ── Métricas ─────────────────────────────────────────────────
   useEffect(() => {
     if (aba === 'metricas') {
@@ -139,15 +162,15 @@ export default function App() {
   }, [aba])
 
   // ── UI ───────────────────────────────────────────────────────
-  const abas: { id: Aba; label: string }[] = [
-    { id:'registrar', label:'+ Registrar' },
-    { id:'audio',     label:'🎙 Áudio e Vídeo' },
-    { id:'listar',    label:'📋 Abertos'   },
-    { id:'qr',        label:'📷 QR Code'   },
-    { id:'foto',      label:'📷 Foto/vídeo' },
-    { id:'metricas',  label:'📊 Métricas'  },
-    { id:'links',     label:'🔗 Serviços'  },
-  ]
+  const abas: { id: Aba; label: string }[] = ([
+    { id:'registrar', label:'+ Registrar',     perfis: REGISTRAR },
+    { id:'audio',     label:'🎙 Áudio e Vídeo', perfis: REGISTRAR },
+    { id:'listar',    label:'📋 Abertos',       perfis: null },
+    { id:'qr',        label:'📷 QR Code',       perfis: REGISTRAR },
+    { id:'foto',      label:'📷 Foto/vídeo',    perfis: REGISTRAR },
+    { id:'metricas',  label:'📊 Métricas',      perfis: METRICAS },
+    { id:'links',     label:'🔗 Serviços',      perfis: null },
+  ] as { id: Aba; label: string; perfis: string[] | null }[]).filter(a => !a.perfis || pode(...a.perfis))
 
   const inp: React.CSSProperties = {
     padding:10, borderRadius:6, border:'1px solid #d1d5db', fontSize:15, width:'100%', boxSizing:'border-box',
@@ -159,9 +182,17 @@ export default function App() {
 
   return (
     <div style={{ fontFamily:'system-ui', maxWidth:520, margin:'0 auto', padding:16, paddingBottom:32 }}>
-      <h1 style={{ fontSize:20, color:'#1e3a5f', margin:'0 0 12px' }}>
-        🖥 CESUP — Registro de Incidentes
-      </h1>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, margin:'0 0 12px' }}>
+        <h1 style={{ fontSize:20, color:'#1e3a5f', margin:0 }}>🖥 CESUP — Registro de Incidentes</h1>
+        {eu ? (
+          <button onClick={sair} title={eu.papeis.filter(p => !p.startsWith('default-') && p !== 'offline_access' && p !== 'uma_authorization').join(', ')}
+            style={{ ...btn('#e5e7eb','#000'), fontSize:13, padding:'6px 10px', whiteSpace:'nowrap' }}>
+            👤 {eu.nome || eu.id} · Sair
+          </button>
+        ) : loginDisponivel() && (
+          <button onClick={entrar} style={{ ...btn('#e5e7eb','#000'), fontSize:13, padding:'6px 10px' }}>Entrar</button>
+        )}
+      </div>
 
       {/* Navegação */}
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
@@ -215,7 +246,12 @@ export default function App() {
       {/* ── Áudio ou vídeo → chamado ──────────────────────── */}
       {aba === 'audio' && (
         <RelatoChamado api={API} ativoInicial={ativoQr}
-          onCriado={p => { aviso(`✔ Chamado criado pelo relato — Prioridade: ${p}`, 'ok'); setAtivoQr(null) }} />
+          onCriado={p => {
+            aviso(p.startsWith('P') ? `✔ Chamado criado pelo relato — Prioridade: ${p}`
+              : '📴 Sem conexão: o chamado ficou guardado no aparelho e será enviado quando a rede voltar',
+              p.startsWith('P') ? 'ok' : 'info')
+            setAtivoQr(null)
+          }} />
       )}
 
       {/* ── Listar ────────────────────────────────────────── */}
@@ -241,11 +277,21 @@ export default function App() {
                   {i.status}
                 </span>
               </div>
-              <p style={{ margin:'2px 0', fontWeight:500, fontSize:14 }}>{i.sintoma}</p>
+              <p style={{ margin:'2px 0', fontWeight:500, fontSize:14 }}>{i.titulo.replace(/^\[P\d\]\s*/, '')}</p>
               <p style={{ margin:0, fontSize:12, color:'#6b7280' }}>
                 {i.ativo_id} · {new Date(i.aberto_em).toLocaleString('pt-BR')}
+                {i.total_eventos > 1 && ` · ${i.total_eventos} eventos`}
               </p>
-              {incSel===i.id && i.status==='aberto' && (
+              {i.sugestao_correlacao && (
+                <div style={{ marginTop:6, padding:'6px 8px', borderRadius:6, background:'#fef9c3', fontSize:13, color:'#854d0e' }}>
+                  🔗 Pode ser o mesmo incidente que …{i.sugestao_correlacao.slice(-6)}
+                  {pode(...ATENDER) && (
+                    <button onClick={e=>{e.stopPropagation();mesclar(i.id, i.sugestao_correlacao!)}}
+                      style={{ ...btn('#854d0e'), fontSize:12, padding:'4px 8px', marginLeft:8 }}>Mesclar</button>
+                  )}
+                </div>
+              )}
+              {incSel===i.id && i.status==='aberto' && pode(...ATENDER) && (
                 <div style={{ display:'flex', gap:6, marginTop:8, flexWrap:'wrap' }}>
                   <button onClick={e=>{e.stopPropagation();ack(i.id)}}
                     style={btn('#ea580c')}>✔ ACK</button>
@@ -255,7 +301,7 @@ export default function App() {
                     style={btn('#6b7280')}>✗ Falso positivo</button>
                 </div>
               )}
-              {incSel===i.id && i.status==='em_atendimento' && (
+              {incSel===i.id && i.status==='em_atendimento' && pode(...ATENDER) && (
                 <div style={{ display:'flex', gap:6, marginTop:8 }}>
                   <button onClick={e=>{e.stopPropagation();fechar(i.id)}}
                     style={btn('#16a34a')}>✓ Fechar</button>
@@ -264,8 +310,10 @@ export default function App() {
               {incSel===i.id && (
                 <div style={{ marginTop:10 }}>
                   <Evidencias urls={anexos} />
-                  <button onClick={e=>{e.stopPropagation();setAba('foto')}}
-                    style={{ ...btn('#e5e7eb','#000'), marginTop:8, fontSize:14 }}>📷 Anexar foto ou vídeo</button>
+                  {pode(...REGISTRAR) && (
+                    <button onClick={e=>{e.stopPropagation();setAba('foto')}}
+                      style={{ ...btn('#e5e7eb','#000'), marginTop:8, fontSize:14 }}>📷 Anexar foto ou vídeo</button>
+                  )}
                 </div>
               )}
             </div>

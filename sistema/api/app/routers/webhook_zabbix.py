@@ -1,43 +1,38 @@
-from fastapi import APIRouter, Request, BackgroundTasks, Depends
+"""Webhook do Zabbix (Sprints 1 e 3): PROBLEM abre ou anexa; RECOVERY registra a recuperação
+e fecha o incidente que só tinha alertas do Zabbix. Reenvio do mesmo eventid não duplica."""
+from fastapi import APIRouter, Request, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.schemas.evento import EventoCreate
-from app.routers.incidentes import registrar_evento
+from app.services import registro
+from app.services.normalizacao import de_zabbix
+from app.services.notificacao import disparar
+from app.services.seguranca import Usuario, exigir, INTEGRAR
 import logging
 
 router = APIRouter(tags=["webhook"])
 log = logging.getLogger("webhook.zabbix")
 
-SEVERITY_MAP = {
-    "not classified": 0.4, "information": 0.5, "warning": 0.6,
-    "average": 0.7, "high": 0.85, "disaster": 1.0,
-}
 
 @router.post("/webhook/zabbix")
 async def receber_webhook_zabbix(request: Request, bg: BackgroundTasks,
-                                 db: AsyncSession = Depends(get_db)):
-    """Recebe alertas do Zabbix e converte para EventoCanônico."""
-    body = await request.json()
+                                 db: AsyncSession = Depends(get_db),
+                                 u: Usuario = Depends(exigir(INTEGRAR))):
+    try:
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(400, "Corpo não é JSON")
     log.info(f"Webhook Zabbix: {body}")
+    evento, eventid, status = de_zabbix(body)
 
-    severity = body.get("severity", "average").lower()
-    confianca = SEVERITY_MAP.get(severity, 0.7)
-    host   = body.get("host", "desconhecido")
-    trigger = body.get("trigger", "alerta_zabbix")
-    status  = body.get("status", "PROBLEM")
+    if status == "RECOVERY":
+        if not eventid:
+            return {"msg": "Recuperação sem eventid ignorada"}
+        return await registro.recuperar_zabbix(db, eventid, raw=body)
 
-    if status.upper() == "RECOVERY":
-        return {"msg": "Recovery ignorado", "eventid": body.get("eventid")}
-
-    evento = EventoCreate(
-        fonte="zabbix",
-        ativo_id=host,
-        local={"sala": "datacenter"},
-        sintoma=trigger,
-        confianca=confianca,
-        seguranca_pessoas="power" in trigger.lower() or "ups" in trigger.lower(),
-    )
-    resultado = await registrar_evento(evento, bg, db)
-    log.info(f"Incidente: {resultado.get('incidente_id')} P={resultado.get('prioridade')}")
-    return {"msg": "ok", "incidente_id": resultado.get("incidente_id"),
-            "prioridade": resultado.get("prioridade")}
+    res = await registro.registrar(db, evento, zabbix_eventid=eventid or None,
+                                   status_origem="PROBLEM", raw=body, criado_por="zabbix")
+    if res["notificar"]:
+        bg.add_task(disparar, res["notificar"])
+    log.info(f"Incidente: {res['incidente_id']} P={res['prioridade']} ({res['decisao_correlacao']})")
+    return {"msg": "ok", "incidente_id": res["incidente_id"], "prioridade": res["prioridade"],
+            "decisao_correlacao": res["decisao_correlacao"]}

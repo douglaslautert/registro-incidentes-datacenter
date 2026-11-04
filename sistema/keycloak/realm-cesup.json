@@ -8,6 +8,7 @@
   "loginWithEmailAllowed": true,
   "rememberMe": true,
   "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 36000,
   "ssoSessionMaxLifespan": 36000,
   "bruteForceProtected": true,
   "clients": [
@@ -20,7 +21,15 @@
       "directAccessGrantsEnabled": false,
       "redirectUris": ["http://localhost/*", "https://incidentes.cesup.ufrgs.br/*"],
       "webOrigins": ["http://localhost", "https://incidentes.cesup.ufrgs.br"],
-      "attributes": { "pkce.code.challenge.method": "S256" }
+      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "+" }
+    },
+    {
+      "clientId": "incidentes-cli",
+      "name": "Scripts e testes da API",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true
     },
     {
       "clientId": "incidentes-api",
@@ -42,31 +51,50 @@
   ],
   "roles": {
     "realm": [
-      { "name": "tecnico-interno",  "description": "Técnico do CESUP — acesso total" },
-      { "name": "terceirizado",     "description": "Prestador de serviço — acesso parcial" },
-      { "name": "gestor",           "description": "Coordenação — leitura e relatórios" },
-      { "name": "plantonista",      "description": "Plantão — ACK e atendimento P1" },
-      { "name": "viewer",           "description": "Usuário do cluster — somente leitura" }
+      { "name": "tecnico-interno",  "description": "Técnico do CESUP — registra, atende e cadastra ativos" },
+      { "name": "terceirizado",     "description": "Prestador de serviço — registra e consulta" },
+      { "name": "gestor",           "description": "Coordenação — consulta e métricas" },
+      { "name": "plantonista",      "description": "Plantão — ACK e atendimento" },
+      { "name": "somente-leitura",  "description": "Consulta incidentes e métricas, sem alterar" },
+      { "name": "admin",            "description": "Administração do sistema — todas as ações" }
     ]
   },
   "users": [
     {
-      "username": "tecnico",
-      "enabled": true,
-      "email": "tecnico@cesup.ufrgs.br",
-      "firstName": "Técnico",
-      "lastName": "Teste",
+      "username": "tecnico", "enabled": true, "email": "tecnico@cesup.ufrgs.br",
+      "firstName": "Técnico", "lastName": "Teste",
       "credentials": [{ "type": "password", "value": "tecnico123", "temporary": false }],
       "realmRoles": ["tecnico-interno"]
     },
     {
-      "username": "gestor",
-      "enabled": true,
-      "email": "gestor@cesup.ufrgs.br",
-      "firstName": "Gestor",
-      "lastName": "Teste",
+      "username": "terceirizado", "enabled": true, "email": "terceirizado@cesup.ufrgs.br",
+      "firstName": "Terceirizado", "lastName": "Teste",
+      "credentials": [{ "type": "password", "value": "terceirizado123", "temporary": false }],
+      "realmRoles": ["terceirizado"]
+    },
+    {
+      "username": "gestor", "enabled": true, "email": "gestor@cesup.ufrgs.br",
+      "firstName": "Gestor", "lastName": "Teste",
       "credentials": [{ "type": "password", "value": "gestor123", "temporary": false }],
       "realmRoles": ["gestor"]
+    },
+    {
+      "username": "plantonista", "enabled": true, "email": "plantonista@cesup.ufrgs.br",
+      "firstName": "Plantonista", "lastName": "Teste",
+      "credentials": [{ "type": "password", "value": "plantonista123", "temporary": false }],
+      "realmRoles": ["plantonista"]
+    },
+    {
+      "username": "leitura", "enabled": true, "email": "leitura@cesup.ufrgs.br",
+      "firstName": "Somente", "lastName": "Leitura",
+      "credentials": [{ "type": "password", "value": "leitura123", "temporary": false }],
+      "realmRoles": ["somente-leitura"]
+    },
+    {
+      "username": "administrador", "enabled": true, "email": "admin@cesup.ufrgs.br",
+      "firstName": "Administrador", "lastName": "CESUP",
+      "credentials": [{ "type": "password", "value": "administrador123", "temporary": false }],
+      "realmRoles": ["admin"]
     }
   ]
 }

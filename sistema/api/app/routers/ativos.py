@@ -1,42 +1,45 @@
-"""Router de ativos — busca por ID, hostname ou código QR."""
-from fastapi import APIRouter, HTTPException
+"""Router de ativos — busca por ID, hostname ou código QR. Persistido em qr_codes."""
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db
+from app.services import inventario
+from app.services.seguranca import Usuario, exigir, LER, GERIR
 import logging
 
 router = APIRouter(prefix="/api/v1/ativos", tags=["ativos"])
 log = logging.getLogger("router.ativos")
 
-# Mapa de QR → ativo (em memória no MVP; banco no Sprint 6)
-_qr_map: dict[str, dict] = {
-    "CESUP-SRV-001": {"ativo_id":"srv-node-001","nome":"Servidor Node 01","sala":"sala-A","rack":"rack-01","tipo":"servidor"},
-    "CESUP-SRV-002": {"ativo_id":"srv-node-002","nome":"Servidor Node 02","sala":"sala-A","rack":"rack-01","tipo":"servidor"},
-    "CESUP-UPS-001": {"ativo_id":"ups-sala-a-1","nome":"UPS Sala A — 1","sala":"sala-A","rack":"rack-01","tipo":"ups"},
-    "CESUP-SW-001":  {"ativo_id":"switch-core-01","nome":"Switch Core 01","sala":"sala-DC","rack":"rack-10","tipo":"switch"},
-    "CESUP-STG-001": {"ativo_id":"storage-01","nome":"Storage 01","sala":"sala-B","rack":"rack-05","tipo":"storage"},
-}
+# Compatibilidade: a interpretação e a transcrição leem este mapa (o mesmo objeto do cache)
+_qr_map = inventario.CACHE
+
 
 @router.get("/qr/{codigo}")
-async def buscar_por_qr(codigo: str):
+async def buscar_por_qr(codigo: str, u: Usuario = Depends(exigir(LER))):
     """Retorna os dados do ativo associado ao código QR."""
     ativo = _qr_map.get(codigo.upper())
     if not ativo:
         raise HTTPException(404, f"QR Code '{codigo}' não mapeado")
     log.info(f"QR lido: {codigo} → {ativo['ativo_id']}")
-    return ativo
+    return {**ativo, "qr_code": codigo.upper()}
+
 
 @router.get("/{ativo_id}")
-async def buscar_por_id(ativo_id: str):
-    """Busca ativo pelo ID direto."""
-    for qr, ativo in _qr_map.items():
-        if ativo["ativo_id"] == ativo_id:
-            return {**ativo, "qr_code": qr}
-    raise HTTPException(404, f"Ativo '{ativo_id}' não encontrado")
+async def buscar_por_id(ativo_id: str, u: Usuario = Depends(exigir(LER))):
+    """Busca ativo pelo ID, código QR ou nome."""
+    ativo = inventario.resolver(ativo_id)
+    if not ativo:
+        raise HTTPException(404, f"Ativo '{ativo_id}' não encontrado")
+    return ativo
+
 
 @router.get("/")
-async def listar_ativos():
+async def listar_ativos(u: Usuario = Depends(exigir(LER))):
     """Lista todos os ativos mapeados com QR Code."""
-    return list(_qr_map.values())
+    return [{**a, "qr_code": qr} for qr, a in _qr_map.items()]
+
 
 class AtivoCreate(BaseModel):
     qr_code: str
@@ -46,11 +49,17 @@ class AtivoCreate(BaseModel):
     rack: Optional[str] = None
     tipo: str = "servidor"
 
+
 @router.post("/", status_code=201)
-async def cadastrar_ativo(payload: AtivoCreate):
+async def cadastrar_ativo(payload: AtivoCreate, db: AsyncSession = Depends(get_db),
+                          u: Usuario = Depends(exigir(GERIR))):
     """Cadastra novo mapeamento QR → ativo."""
     if payload.qr_code.upper() in _qr_map:
         raise HTTPException(409, f"QR Code '{payload.qr_code}' já cadastrado")
-    _qr_map[payload.qr_code.upper()] = payload.model_dump(exclude={"qr_code"})
+    try:
+        await inventario.cadastrar(db, payload.qr_code, payload.model_dump(exclude={"qr_code"}))
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(409, f"QR Code '{payload.qr_code}' já cadastrado")
     log.info(f"Ativo cadastrado: {payload.qr_code} → {payload.ativo_id}")
-    return {"msg": "Ativo cadastrado", "qr_code": payload.qr_code}
+    return {"msg": "Ativo cadastrado", "qr_code": payload.qr_code.upper()}

@@ -79,6 +79,12 @@ wait_url() {
     return 1
 }
 
+# Token de serviço da API (webhook do Zabbix, ingestão de e-mail, scripts): gerado uma vez
+if ! grep -q '^TOKEN_SERVICO=..*' .env 2>/dev/null; then
+    set_env TOKEN_SERVICO "$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+    ok "TOKEN_SERVICO gerado no .env"
+fi
+
 # ══════════════════════════════════════════════════════════════
 # PASSO 1 — Build e subida dos containers
 # ══════════════════════════════════════════════════════════════
@@ -224,6 +230,9 @@ else
             *)   warn "Importação do realm retornou HTTP $HTTP — verifique em http://localhost/auth" ;;
         esac
     fi
+    # Perfis da Sprint 2, usuários de teste, client de scripts e, se LDAP_URL, o LDAP
+    set -a; source .env; set +a
+    KC_URL="$KC_URL" python3 keycloak/configurar.py | sed 's/^/      /'         && ok "Realm cesup conferido (perfis, usuários e LDAP)"         || warn "Configuração do realm falhou — rode: make keycloak-config"
 fi
 
 # ══════════════════════════════════════════════════════════════

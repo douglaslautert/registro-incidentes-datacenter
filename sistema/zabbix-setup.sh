@@ -14,7 +14,7 @@ info() { echo -e "${BLUE}  → $1${NC}"; }
 warn() { echo -e "${YELLOW}  ⚠ $1${NC}"; }
 
 [ -f .env ] || { warn ".env não encontrado"; exit 1; }
-source .env
+set -a; source .env; set +a   # exportado: o webhook_params.py lê o TOKEN_SERVICO
 command -v python3 >/dev/null || { warn "python3 não encontrado — instale-o no servidor"; exit 1; }
 
 ZBX_API="http://localhost/zabbix/api_jsonrpc.php"
@@ -109,7 +109,9 @@ fi
 # que o script recebe como JSON na variável "value".
 MT_ID=$(zbx_call mediatype.get '{"filter":{"name":"CESUP Incidentes"},"output":["mediatypeid"]}' | zbx_py "r['result'][0]['mediatypeid'] if r.get('result') else ''")
 if [ -n "$MT_ID" ]; then
-    warn "Webhook 'CESUP Incidentes' já existe"
+    # Atualiza script e parâmetros (ex.: TOKEN_SERVICO novo) sem recriar a mídia
+    MT_UPD=$(python3 zabbix/webhook_params.py | MT_ID="$MT_ID" python3 -c         "import json,os,sys; d=json.load(sys.stdin); d.pop('name'); d['mediatypeid']=os.environ['MT_ID']; print(json.dumps(d))")
+    zbx_create "Webhook 'CESUP Incidentes' atualizado" mediatype.update "$MT_UPD"
 else
     MT_PARAMS=$(python3 zabbix/webhook_params.py)
     zbx_create "Webhook 'CESUP Incidentes' criado" mediatype.create "$MT_PARAMS"

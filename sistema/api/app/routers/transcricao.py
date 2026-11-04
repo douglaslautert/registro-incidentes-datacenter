@@ -1,12 +1,13 @@
 """Router de transcrição de voz para texto e interpretação do relato em chamado."""
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app.services.transcricao import transcrever_audio
 from app.services.interpretacao import interpretar
 from app.services.s3_client import upload_evidencia
 from app.services.midia import tipo_do_upload, extrair_audio
+from app.services.seguranca import Usuario, exigir, REGISTRAR
 import logging
 
 router = APIRouter(prefix="/api/v1/transcricao", tags=["transcrição"])
@@ -52,6 +53,7 @@ async def _relato(arquivo: UploadFile, tipos: dict, limite_mb: int, nome: str) -
 async def transcrever_voz(
     audio: UploadFile = File(...),
     incidente_id: Optional[str] = None,
+    u: Usuario = Depends(exigir(REGISTRAR)),
 ):
     """
     Recebe áudio, salva no S3 como evidência, transcreve e sugere os campos do chamado.
@@ -63,7 +65,7 @@ async def transcrever_voz(
 
 
 @router.post("/video")
-async def transcrever_video(video: UploadFile = File(...)):
+async def transcrever_video(video: UploadFile = File(...), u: Usuario = Depends(exigir(REGISTRAR))):
     """
     Recebe o vídeo do problema, salva no S3 o vídeo e, à parte, o áudio extraído dele,
     transcreve a fala e sugere os campos do chamado. Vídeo sem som volta com texto
@@ -89,6 +91,6 @@ class Relato(BaseModel):
 
 
 @router.post("/interpretar")
-async def interpretar_relato(relato: Relato):
+async def interpretar_relato(relato: Relato, u: Usuario = Depends(exigir(REGISTRAR))):
     """Reinterpreta o relato depois que o técnico corrige o texto transcrito."""
     return interpretar(relato.texto)

@@ -1,4 +1,4 @@
-.PHONY: install uninstall up down restart logs ps build clean migrate db sh \
+.PHONY: keycloak-config test install uninstall up down restart logs ps build clean migrate db sh \
         rede-local glpi-setup garage-setup zabbix-setup garage-key garage-status health zabbix-logs glpi-logs glpi-token
 
 # Instalação completa (primeira vez; pode ser repetida)
@@ -49,6 +49,14 @@ clean:
 # Migrações Alembic
 migrate:
 	docker compose exec api alembic upgrade head
+
+# Perfis, usuários de teste, client de scripts e federação LDAP no Keycloak — idempotente
+keycloak-config:
+	set -a; . ./.env; set +a; KC_URL=http://localhost/auth python3 keycloak/configurar.py
+
+# Testes da API num banco separado (incidentes_teste)
+test:
+	bash testes.sh
 
 # psql direto no banco
 db:

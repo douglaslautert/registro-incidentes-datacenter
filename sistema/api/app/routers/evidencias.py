@@ -9,6 +9,8 @@ from app.database import get_db
 from app.models.incidente import Evento
 from app.services.s3_client import upload_evidencia, url_presigned, baixar_evidencia, IntervaloInvalido
 from app.services.midia import tipo_do_upload
+from app.services import registro, tarefas
+from app.services.seguranca import Usuario, exigir, REGISTRAR, LER
 import logging
 
 router = APIRouter(prefix="/api/v1/evidencias", tags=["evidências"])
@@ -45,8 +47,10 @@ async def upload(
     incidente_id: str,
     arquivo: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    u: Usuario = Depends(exigir(REGISTRAR)),
 ):
-    """Envia foto, vídeo ou áudio ao S3 e anexa ao incidente."""
+    """Envia foto, vídeo ou áudio ao S3 e anexa ao incidente. Fotos e vídeos seguem para
+    análise pelo modelo de visão (Sprint 5), quando houver um configurado."""
     content_type = tipo_do_upload(arquivo)   # MIME ou, se vier genérico, pela extensão (.mov)
     if content_type not in TIPOS:
         raise HTTPException(400, f"Tipo não permitido: {content_type or 'desconhecido'}")
@@ -54,10 +58,8 @@ async def upload(
 
     # Confere o incidente antes do upload, para não deixar arquivo órfão no S3
     evento = await _ultimo_evento(db, incidente_id)
-    if evento is None:
-        from app.routers.incidentes import _incidentes
-        if incidente_id not in _incidentes:
-            raise HTTPException(404, "Incidente não encontrado")
+    if evento is None and incidente_id not in registro.memoria_incidentes:
+        raise HTTPException(404, "Incidente não encontrado")
 
     dados = await arquivo.read()
     if len(dados) == 0:
@@ -74,9 +76,10 @@ async def upload(
         evento.evidencias = list(evento.evidencias or []) + [url]
         await db.flush()
     else:
-        from app.routers.incidentes import _eventos
-        _eventos.append({"incidente_id": incidente_id, "evidencias": [url]})
+        registro.memoria_eventos.append({"incidente_id": incidente_id, "evidencias": [url]})
 
+    if registro.tipo_midia(url):
+        tarefas.enfileirar("analisar_midia", incidente_id, url)
     log.info(f"Evidência {url} anexada ao incidente {incidente_id}")
     return {
         "incidente_id": incidente_id,
@@ -115,7 +118,7 @@ async def arquivo(key: str, request: Request):
 
 
 @router.get("/url/{key:path}")
-async def url_temporaria(key: str, expira_segundos: int = 3600):
+async def url_temporaria(key: str, expira_segundos: int = 3600, u: Usuario = Depends(exigir(LER))):
     """Gera URL assinada temporária para acesso a uma evidência."""
     url = url_presigned(key, expira_segundos)
     if not url:
