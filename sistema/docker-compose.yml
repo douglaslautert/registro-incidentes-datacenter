@@ -260,7 +260,10 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: cesup
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KC_HOSTNAME: ${KC_HOSTNAME:-localhost}
+      # Vazio = endereço dinâmico: o Keycloak responde no endereço por onde foi acessado
+      # (localhost ou o IP), lido dos cabeçalhos X-Forwarded do Nginx. Fixo, o login por
+      # outro endereço quebra (o formulário de login vai para o host fixo)
+      KC_HOSTNAME: ${KC_HOSTNAME:-}
       KC_HTTP_ENABLED: 'true'
       KC_HTTP_PORT: '8080'
       KC_HEALTH_ENABLED: 'true'

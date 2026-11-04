@@ -37,7 +37,7 @@ make rede-local ip=192.168.0.10     # ou informe o IP (ou um nome DNS da rede)
 
 O script ([`rede-local.sh`](rede-local.sh)):
 
-1. Troca no `.env` o `PUBLIC_URL` para `https://<IP>` e o `KC_HOSTNAME` para o IP.
+1. Troca no `.env` o `PUBLIC_URL` para `https://<IP>`. O `KC_HOSTNAME` fica vazio: o Keycloak responde no endereço por onde foi acessado, então o login funciona tanto pelo IP quanto por `http://localhost` no próprio servidor.
 2. Gera um certificado HTTPS autoassinado (`nginx/certs/cesup.crt`) e ativa a porta 443 no nginx.
 3. Reconstrói o PWA e recria Keycloak, Grafana, API e nginx com o novo endereço.
 4. Inclui o endereço nos redirect URIs dos clients do Keycloak.
