@@ -43,6 +43,11 @@ class IncidenteResponse(BaseModel):
     aberto_em:    datetime
     total_eventos: int = 0
     sugestao_correlacao: Optional[str] = None
+    # Preenchidos nos encerrados (aba Concluídos)
+    fechado_em:   Optional[datetime] = None
+    fechado_por:  Optional[str] = None
+    causa_raiz:   Optional[str] = None
+    mesclado_em:  Optional[str] = None
 
     class Config:
         from_attributes = True

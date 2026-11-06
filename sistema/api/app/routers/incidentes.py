@@ -52,7 +52,9 @@ async def listar_incidentes(status: str = "aberto,em_atendimento",
         linhas = (await db.execute(q)).all()
         itens = [IncidenteResponse(id=i.id, titulo=i.titulo, prioridade=i.prioridade, status=i.status,
                                    ativo_id=i.ativo_id, aberto_em=i.aberto_em, total_eventos=n or 0,
-                                   sugestao_correlacao=i.sugestao_correlacao) for i, n in linhas]
+                                   sugestao_correlacao=i.sugestao_correlacao, fechado_em=i.fechado_em,
+                                   fechado_por=i.fechado_por, causa_raiz=i.causa_raiz,
+                                   mesclado_em=i.mesclado_em) for i, n in linhas]
     except SQLAlchemyError as e:
         log.warning(f"Listagem no banco falhou, usando memória: {e}")
         itens = [IncidenteResponse(**{k: i[k] for k in ("id", "titulo", "prioridade", "status",
@@ -88,6 +90,8 @@ async def buscar_incidente(incidente_id: str, db: AsyncSession = Depends(get_db)
         "id": inc.id, "titulo": inc.titulo, "prioridade": inc.prioridade, "status": inc.status,
         "ativo_id": inc.ativo_id, "aberto_em": inc.aberto_em, "fechado_em": inc.fechado_em,
         "causa_raiz": inc.causa_raiz, "local": inc.local, "criado_por": inc.criado_por,
+        "fechado_por": inc.fechado_por,
+        "historico": montar_historico(inc, eventos, acs, analises),
         "sugestao_correlacao": inc.sugestao_correlacao, "mesclado_em": inc.mesclado_em,
         "evidencias": [normalizar_url(x) for e in eventos for x in (e.evidencias or [])],
         "eventos": [{"id": e.id, "fonte": e.fonte, "sintoma": e.sintoma, "confianca": e.confianca,
@@ -101,11 +105,51 @@ async def buscar_incidente(incidente_id: str, db: AsyncSession = Depends(get_db)
     }
 
 
-async def _encerrar(db, incidente_id: str, status: str, causa: str) -> dict:
+FONTE = {"pessoa": "relato no PWA", "zabbix": "alerta do Zabbix", "email": "e-mail"}
+
+
+def montar_historico(inc: Incidente, eventos: list, acionamentos: list, analises: list) -> list[dict]:
+    """Linha do tempo do incidente: quem abriu, novos relatos, acionamentos do plantão,
+    quem assumiu, análises de imagem e quem encerrou — do mais antigo ao mais recente."""
+    h: list[dict] = []
+    primeiro = eventos[0] if eventos else None
+    h.append({"quando": inc.aberto_em, "tipo": "aberto", "quem": inc.criado_por,
+              "texto": f"Incidente aberto ({FONTE.get(primeiro.fonte, primeiro.fonte) if primeiro else 'registro'})"})
+    for e in eventos[1:]:
+        if e.status_origem == "RECOVERY":
+            h.append({"quando": e.recebido_em, "tipo": "recuperado", "quem": e.autor or "zabbix",
+                      "texto": "O Zabbix informou que o problema se normalizou"})
+        else:
+            h.append({"quando": e.recebido_em, "tipo": "relato", "quem": e.autor,
+                      "texto": f"Novo {FONTE.get(e.fonte, e.fonte)}: {e.sintoma}"})
+    assumidos = set()
+    for a in acionamentos:
+        h.append({"quando": a.acionado_em, "tipo": "acionamento", "quem": "sistema",
+                  "texto": (f"Plantão acionado — prioridade {a.prioridade}" if a.nivel == 1
+                            else f"Sem resposta no prazo: reescalonado para o nível {a.nivel}")})
+        if a.ack_em and (a.ack_em, a.ack_por) not in assumidos:   # um ACK cobre vários acionamentos
+            assumidos.add((a.ack_em, a.ack_por))
+            h.append({"quando": a.ack_em, "tipo": "assumido", "quem": a.ack_por,
+                      "texto": "Atendimento assumido"})
+    for an in analises:
+        h.append({"quando": an.criado_em, "tipo": "analise", "quem": an.modelo,
+                  "texto": f"Análise da {'imagem' if an.tipo == 'imagem' else 'gravação'}: {an.descricao}"})
+    if inc.fechado_em and inc.status in ("resolvido", "falso_positivo"):
+        if inc.mesclado_em:
+            texto = f"Juntado a outro incidente (…{inc.mesclado_em[-6:]})"
+        elif inc.status == "falso_positivo":
+            texto = "Marcado como falso alarme" + (f": {inc.causa_raiz}" if inc.causa_raiz else "")
+        else:
+            texto = "Encerrado como resolvido" + (f": {inc.causa_raiz}" if inc.causa_raiz else "")
+        h.append({"quando": inc.fechado_em, "tipo": "encerrado", "quem": inc.fechado_por, "texto": texto})
+    return sorted(h, key=lambda x: x["quando"])
+
+
+async def _encerrar(db, incidente_id: str, status: str, causa: str, quem: str) -> dict:
     agora = datetime.now(timezone.utc)
     try:
         res = await db.execute(update(Incidente).where(Incidente.id == incidente_id)
-                               .values(status=status, causa_raiz=causa, fechado_em=agora))
+                               .values(status=status, causa_raiz=causa, fechado_em=agora, fechado_por=quem))
         if res.rowcount:
             # Fechado não reescalona: os acionamentos pendentes param aqui
             await db.execute(update(Acionamento)
@@ -118,20 +162,20 @@ async def _encerrar(db, incidente_id: str, status: str, causa: str) -> dict:
     m = registro.memoria_incidentes.get(incidente_id)
     if not m:
         raise HTTPException(404, "Incidente não encontrado")
-    m.update(status=status, causa_raiz=causa, fechado_em=agora)
+    m.update(status=status, causa_raiz=causa, fechado_em=agora, fechado_por=quem)
     return {"msg": "Incidente encerrado", "id": incidente_id, "status": status}
 
 
 @router.patch("/incidentes/{incidente_id}/fechar")
 async def fechar_incidente(incidente_id: str, causa_raiz: str = "",
                            db: AsyncSession = Depends(get_db), u: Usuario = Depends(exigir(ATENDER))):
-    return await _encerrar(db, incidente_id, "resolvido", causa_raiz)
+    return await _encerrar(db, incidente_id, "resolvido", causa_raiz, u.id)
 
 
 @router.patch("/incidentes/{incidente_id}/falso_positivo")
 async def marcar_falso_positivo(incidente_id: str, motivo: str = "",
                                 db: AsyncSession = Depends(get_db), u: Usuario = Depends(exigir(ATENDER))):
-    return await _encerrar(db, incidente_id, "falso_positivo", motivo)
+    return await _encerrar(db, incidente_id, "falso_positivo", motivo, u.id)
 
 
 @router.patch("/incidentes/{incidente_id}/ack")
@@ -169,6 +213,6 @@ async def mesclar(incidente_id: str, destino: str, db: AsyncSession = Depends(ge
     origem.mesclado_em = destino
     origem.sugestao_correlacao = None
     await db.flush()
-    await _encerrar(db, incidente_id, "resolvido", f"Mesclado em {destino} por {u.id}")
+    await _encerrar(db, incidente_id, "resolvido", f"Juntado ao incidente {destino}", u.id)
     return {"msg": "Incidentes mesclados", "origem": incidente_id, "destino": destino,
             "prioridade": alvo.prioridade}

@@ -36,6 +36,7 @@ class Incidente(Base):
     aberto_em   = Column(DateTime(timezone=True), primary_key=True,
                          default=datetime.utcnow)
     fechado_em  = Column(DateTime(timezone=True))
+    fechado_por = Column(String)                  # quem encerrou (ou "zabbix" na recuperação)
     criado_por  = Column(String)
     local       = Column(JSONB)
     fingerprint = Column(String)                  # S3: deduplicação (ativo + sintoma)
@@ -65,6 +66,7 @@ class Evento(Base):
     fingerprint  = Column(String)
     zabbix_eventid = Column(String)
     status_origem  = Column(String)      # PROBLEM | RECOVERY (Zabbix)
+    autor          = Column(String)      # quem fez o relato (usuário, "zabbix", "email:...")
     raw_payload    = Column(JSONB)
 
     incidente    = relationship("Incidente", back_populates="eventos",

@@ -1,7 +1,22 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import './estilo.css'
 import { iniciarAuth } from './auth'
+import { registerSW } from 'virtual:pwa-register'
+
+// Versão nova publicada no servidor: o service worker baixa e a página recarrega
+// sozinha. Sem isso o app aberto (ou instalado no celular) seguia mostrando a versão
+// antiga guardada em cache até ser fechado e aberto de novo.
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, reg) {
+    if (!reg) return
+    const verificar = () => { if (navigator.onLine) reg.update().catch(() => {}) }
+    setInterval(verificar, 60_000)
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) verificar() })
+  },
+})
 
 // Endereço único: com o sistema publicado em HTTPS, quem abrir pelo http da rede vai
 // para o https. O nginx já redireciona, mas um PWA aberto antes em http fica guardado
