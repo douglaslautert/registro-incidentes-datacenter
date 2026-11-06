@@ -7,15 +7,15 @@ function tipo(url: string): 'imagem' | 'heic' | 'video' | 'audio' | 'outro' {
   if (['heic', 'heif'].includes(ext)) return 'heic'      // só o Safari exibe
   if (['mp4', 'mov', 'webm'].includes(ext)) return 'video'
   // áudio WebM é salvo como .weba para não confundir com vídeo WebM
-  if (['weba', 'm4a', 'ogg', 'wav', 'mp3'].includes(ext)) return 'audio'
+  if (['weba', 'm4a', 'ogg', 'wav', 'mp3', 'aac'].includes(ext)) return 'audio'
   return 'outro'
 }
 
 export function Evidencias({ urls }: Props) {
   if (!urls.length) {
-    return <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>Nenhuma foto, vídeo ou áudio anexado.</p>
+    return <p style={{ margin: 0, fontSize: 13, color: 'var(--cor-texto-suave)' }}>Nenhuma foto, vídeo ou áudio anexado.</p>
   }
-  const caixa: React.CSSProperties = { width: '100%', borderRadius: 6, background: '#000', display: 'block' }
+  const caixa: React.CSSProperties = { width: '100%', borderRadius: 8, background: '#000', display: 'block' }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
       {urls.map(u => {

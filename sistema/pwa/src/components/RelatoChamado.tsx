@@ -16,7 +16,7 @@ interface Props {
   onCriado: (prioridade: string) => void
 }
 
-const COR: Record<string, string> = { P1: '#dc2626', P2: '#ea580c', P3: '#ca8a04', P4: '#16a34a' }
+const COR: Record<string, string> = { P1: 'var(--erro)', P2: 'var(--p2)', P3: 'var(--p3)', P4: 'var(--ok)' }
 const LIMITE_S = { audio: 120, video: 90 }   // vídeo a ~2,5 Mbit/s: 90 s ≈ 30 MB
 
 // Chrome/Android gravam WebM/Opus; o Safari do iPhone só grava MP4/AAC
@@ -230,9 +230,9 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
     } finally { setOcupado('') }
   }
 
-  const inp: React.CSSProperties = { padding: 10, borderRadius: 6, border: '1px solid #d1d5db', fontSize: 15, width: '100%', boxSizing: 'border-box' }
-  const btn = (bg = '#1e3a5f', color = '#fff'): React.CSSProperties => ({
-    padding: '12px 16px', background: bg, color, border: 'none', borderRadius: 6,
+  const inp: React.CSSProperties = { padding: 10, borderRadius: 8, border: '1px solid #d1d5db', fontSize: 15, width: '100%', boxSizing: 'border-box' }
+  const btn = (bg = 'var(--cor-primaria)', color = 'var(--cor-texto-inverso)'): React.CSSProperties => ({
+    padding: '12px 16px', background: bg, color, border: 'none', borderRadius: 8,
     cursor: 'pointer', fontWeight: 600, fontSize: 16, width: '100%',
     display: 'block', textAlign: 'center', boxSizing: 'border-box',
   })
@@ -241,13 +241,13 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ color: '#6b7280', margin: 0 }}>
+      <p style={{ color: 'var(--cor-texto-suave)', margin: 0 }}>
         Grave um áudio ou filme o problema falando o que está acontecendo: o ativo, o local e o sintoma.
         A fala é transcrita no servidor do CESUP e vira um chamado depois da sua revisão. O áudio e o vídeo ficam guardados e anexados ao chamado.
       </p>
 
       {ativoInicial && (
-        <div style={{ padding: 10, background: '#eff6ff', borderRadius: 6, fontSize: 14 }}>
+        <div style={{ padding: 10, background: 'var(--info-fundo)', borderRadius: 8, fontSize: 14 }}>
           📷 Ativo via QR: <strong>{ativoInicial.nome}</strong> — {ativoInicial.sala}
         </div>
       )}
@@ -257,18 +257,18 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
         {podeGravarAudio ? (
           <button type="button" onClick={gravando === 'audio' ? parar : () => iniciar('audio')}
             disabled={!!ocupado || gravando === 'video'}
-            style={{ ...btn(gravando === 'audio' ? '#dc2626' : '#1e3a5f'), opacity: gravando === 'video' ? 0.5 : 1 }}>
+            style={{ ...btn(gravando === 'audio' ? 'var(--erro)' : 'var(--cor-primaria)'), opacity: gravando === 'video' ? 0.5 : 1 }}>
             {gravando === 'audio' ? `⏹ Parar (${mmss})` : '🎙 Gravar áudio'}
           </button>
         ) : (
-          <p style={{ margin: 0, padding: 8, background: '#fef9c3', borderRadius: 6, color: '#854d0e', fontSize: 13 }}>
+          <p style={{ margin: 0, padding: 8, background: 'var(--aviso-fundo)', borderRadius: 8, color: 'var(--aviso)', fontSize: 13 }}>
             Gravar áudio exige <strong>https://</strong>
           </p>
         )}
         {podeGravarVideo ? (
           <button type="button" onClick={gravando === 'video' ? parar : () => iniciar('video')}
             disabled={!!ocupado || gravando === 'audio'}
-            style={{ ...btn(gravando === 'video' ? '#dc2626' : '#1e3a5f'), opacity: gravando === 'audio' ? 0.5 : 1 }}>
+            style={{ ...btn(gravando === 'video' ? 'var(--erro)' : 'var(--cor-primaria)'), opacity: gravando === 'audio' ? 0.5 : 1 }}>
             {gravando === 'video' ? `⏹ Parar (${mmss})` : '🎥 Gravar vídeo'}
           </button>
         ) : (
@@ -283,41 +283,41 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
           <div style={{ gridColumn: '1 / -1', position: 'relative' }}>
             <video muted playsInline autoPlay
               ref={el => { if (el && el.srcObject !== previa) el.srcObject = previa }}
-              style={{ width: '100%', borderRadius: 6, background: '#000', display: 'block' }} />
+              style={{ width: '100%', borderRadius: 8, background: '#000', display: 'block' }} />
             <span style={{ position: 'absolute', top: 8, left: 8, padding: '2px 8px', borderRadius: 4,
-              background: '#dc2626', color: '#fff', fontSize: 14, fontWeight: 600 }}>
+              background: 'var(--erro)', color: 'var(--cor-texto-inverso)', fontSize: 14, fontWeight: 600 }}>
               ● {mmss} / 1:30
             </span>
           </div>
         )}
-        <label style={{ ...btn('#e5e7eb', '#000'), gridColumn: '1 / -1', opacity: ocupado || gravando ? 0.5 : 1 }}>
-          📁 Enviar áudio ou vídeo do celular
+        <label style={{ ...btn('var(--cor-superficie-2)', 'var(--cor-texto)'), gridColumn: '1 / -1', opacity: ocupado || gravando ? 0.5 : 1 }}>
+          📁 Escolher áudio ou vídeo do celular
           <input type="file" accept="audio/*,video/*,.mov,.m4a" style={{ display: 'none' }}
             onChange={escolherArquivo} disabled={!!ocupado || !!gravando} />
         </label>
       </div>
-      <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--cor-texto-suave)' }}>
         Gravação: áudio até 2 min, vídeo até 1min30 · Envio: áudios até 10 MB, vídeos até 90 MB (MP4, MOV/QuickTime, WebM)
       </p>
 
       {ocupado === 'transcrevendo' && (
         progresso !== null ? (
           <div>
-            <p style={{ margin: '0 0 4px', color: '#1d4ed8' }}>Enviando o {nomeMidia}… {progresso}%</p>
-            <div style={{ height: 8, background: '#e5e7eb', borderRadius: 4 }}>
-              <div style={{ height: 8, width: `${progresso}%`, background: '#1d4ed8', borderRadius: 4, transition: 'width .2s' }} />
+            <p style={{ margin: '0 0 4px', color: 'var(--info)' }}>Enviando o {nomeMidia}… {progresso}%</p>
+            <div style={{ height: 8, background: 'var(--cor-superficie-2)', borderRadius: 4 }}>
+              <div style={{ height: 8, width: `${progresso}%`, background: 'var(--info)', borderRadius: 4, transition: 'width .2s' }} />
             </div>
           </div>
         ) : (
-          <p style={{ margin: 0, color: '#1d4ed8', textAlign: 'center' }}>Transcrevendo o {nomeMidia}…</p>
+          <p style={{ margin: 0, color: 'var(--info)', textAlign: 'center' }}>Transcrevendo o {nomeMidia}…</p>
         )
       )}
       {erro && (
-        <p style={{ margin: 0, padding: 10, background: '#fee2e2', borderRadius: 6, color: '#dc2626' }}>{erro}</p>
+        <p style={{ margin: 0, padding: 10, background: 'var(--erro-fundo)', borderRadius: 8, color: 'var(--erro)' }}>{erro}</p>
       )}
       {cameraNegada && !ocupado && (
         /* Câmera nativa do celular: abre o app Câmera e devolve o vídeo, sem a permissão do site */
-        <label style={btn('#1e3a5f')}>
+        <label style={btn('var(--cor-primaria)')}>
           🎥 Filmar com a câmera do celular
           <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
             onChange={e => { setCameraNegada(false); escolherArquivo(e) }} />
@@ -328,13 +328,13 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
       {(texto || anexos.length > 0 || erro) && ocupado !== 'transcrevendo' && (
         <form onSubmit={criarChamado} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
           {anexos.length > 0 && <Evidencias urls={anexos} />}
-          <label style={{ fontWeight: 600, color: '#374151' }}>
-            Relato {revisar && <span style={{ color: '#ca8a04', fontWeight: 500 }}>· revise a transcrição</span>}
+          <label style={{ fontWeight: 600, color: 'var(--cor-texto)' }}>
+            Relato {revisar && <span style={{ color: 'var(--p3)', fontWeight: 500 }}>· revise a transcrição</span>}
           </label>
           <textarea required rows={4} style={{ ...inp, resize: 'vertical' }}
             value={texto} onChange={e => setTexto(e.target.value)} />
           <button type="button" onClick={analisarDeNovo} disabled={!!ocupado || !texto.trim()}
-            style={{ ...btn('#e5e7eb', '#000'), fontSize: 14, padding: '8px 12px' }}>
+            style={{ ...btn('var(--cor-superficie-2)', 'var(--cor-texto)'), fontSize: 14, padding: '8px 12px' }}>
             {ocupado === 'analisando' ? 'Analisando…' : '↻ Analisar o texto de novo'}
           </button>
 
@@ -355,11 +355,11 @@ export function RelatoChamado({ api, ativoInicial, onCriado }: Props) {
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
             <input type="checkbox" checked={campos.seguranca_pessoas}
               onChange={e => setCampos({ ...campos, seguranca_pessoas: e.target.checked })} />
-            <span style={{ color: '#dc2626', fontWeight: 500 }}>⚠ Risco à segurança de pessoas</span>
+            <span style={{ color: 'var(--erro)', fontWeight: 500 }}>⚠ Risco à segurança de pessoas</span>
           </label>
 
           {prioridade && (
-            <p style={{ margin: 0, fontSize: 14, color: '#374151' }}>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--cor-texto)' }}>
               Prioridade prevista: <strong style={{ color: COR[campos.seguranca_pessoas ? 'P1' : prioridade] }}>
                 {campos.seguranca_pessoas ? 'P1' : prioridade}</strong>
               {anexos.length > 0 && (video ? ' · vídeo e áudio guardados e anexados ao chamado' : ' · áudio guardado e anexado ao chamado')}

@@ -173,6 +173,7 @@ async def _registrar_banco(db, ev, fp, zabbix_eventid, status_origem, raw, criad
         local=ev.local.model_dump(), evidencias=list(ev.evidencias or []), recebido_em=agora,
         embedding=vetor, embedding_modelo=modelo, fingerprint=fp,
         zabbix_eventid=zabbix_eventid, status_origem=status_origem, raw_payload=raw,
+        autor=criado_por,
     ))
     await db.flush()
     for url in ev.evidencias or []:
@@ -236,6 +237,7 @@ async def recuperar_zabbix(db: AsyncSession, eventid: str, raw: dict | None = No
             confianca=problema.confianca, seguranca=False, local=problema.local,
             evidencias=[], recebido_em=_agora(), zabbix_eventid=eventid,
             status_origem="RECOVERY", raw_payload=raw, fingerprint=problema.fingerprint,
+            autor="zabbix",
         ))
         await db.flush()
 
@@ -250,6 +252,7 @@ async def recuperar_zabbix(db: AsyncSession, eventid: str, raw: dict | None = No
     if inc and inc.status in ABERTOS and so_zabbix and problemas <= recuperados:
         inc.status, inc.fechado_em = "resolvido", _agora()
         inc.causa_raiz = "Recuperação automática no Zabbix"
+        inc.fechado_por = "zabbix"
         # Recuperado não reescalona: os acionamentos pendentes param aqui
         await db.execute(update(Acionamento).where(Acionamento.incidente_id == iid,
                                                    Acionamento.ack_em.is_(None)).values(escalado=True))

@@ -24,7 +24,8 @@ TIPOS = {
     "video/mp4": ("mp4", 90), "video/quicktime": ("mov", 90), "video/webm": ("webm", 90),
     # .weba (e não .webm) para o PWA saber que é áudio, não vídeo
     "audio/webm": ("weba", 20), "audio/ogg": ("ogg", 20), "audio/wav": ("wav", 20),
-    "audio/mp4": ("m4a", 20),
+    "audio/mp4": ("m4a", 20), "audio/x-m4a": ("m4a", 20), "audio/mpeg": ("mp3", 20),
+    "audio/aac": ("aac", 20),
 }
 
 

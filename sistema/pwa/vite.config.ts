@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,   // registrado em main.tsx, com recarga automática
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         // O service worker controla o site inteiro ("/") e responderia toda

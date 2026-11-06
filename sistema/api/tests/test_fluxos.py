@@ -174,6 +174,54 @@ async def test_perfis_com_login_obrigatorio(cliente, db, monkeypatch, chaves):
     assert (await cliente.get("/api/v1/auth/config")).json()["obrigatoria"] is True
 
 
+# ── Histórico: quem fez cada passo ──────────────────────────────────
+async def test_historico_registra_quem_fez_cada_passo(cliente, db, monkeypatch, chaves):
+    pem, jwks = chaves
+    monkeypatch.setattr(settings, "AUTH_OBRIGATORIA", True)
+    seguranca._jwks.update(chaves=jwks, quando=time.time())
+    def h(usuario, papel):
+        return {"Authorization": f"Bearer {emitir(pem, (papel,), usuario=usuario)}"}
+
+    iid = (await cliente.post("/api/v1/incidentes", headers=h("ana", "terceirizado"),
+                              json=evento(sintoma="Rack sem energia", ativo="rack-01"))).json()["incidente_id"]
+    extra = await cliente.post("/api/v1/incidentes", headers=h("bruno", "tecnico-interno"),
+                               json=evento(sintoma="rack sem energia!", ativo="rack-01"))
+    assert extra.json()["incidente_id"] == iid                       # mesmo problema, mesmo incidente
+    await cliente.patch(f"/api/v1/incidentes/{iid}/ack", headers=h("carla", "plantonista"))
+    await cliente.patch(f"/api/v1/incidentes/{iid}/fechar", params={"causa_raiz": "Disjuntor religado"},
+                        headers=h("bruno", "tecnico-interno"))
+
+    det = (await cliente.get(f"/api/v1/incidentes/{iid}", headers=h("davi", "gestor"))).json()
+    assert det["criado_por"] == "ana" and det["fechado_por"] == "bruno"
+    passos = [(p["tipo"], p["quem"]) for p in det["historico"]]
+    assert passos[0] == ("aberto", "ana")
+    assert ("relato", "bruno") in passos
+    assert ("assumido", "carla") in passos
+    assert passos[-1] == ("encerrado", "bruno")
+    assert det["historico"][-1]["texto"] == "Encerrado como resolvido: Disjuntor religado"
+    quandos = [p["quando"] for p in det["historico"]]
+    assert quandos == sorted(quandos)
+    # Aba Concluídos: a lista de encerrados traz quem, quando e por quê
+    fechados = (await cliente.get("/api/v1/incidentes", params={"status": "resolvido,falso_positivo"},
+                                  headers=h("davi", "gestor"))).json()
+    item = next(i for i in fechados if i["id"] == iid)
+    assert item["fechado_por"] == "bruno" and item["causa_raiz"] == "Disjuntor religado" and item["fechado_em"]
+
+
+async def test_falso_alarme_e_recuperacao_registram_quem_encerrou(cliente, db):
+    d = await criar(cliente, sintoma="Alarme de porta aberta", ativo="rack-01")
+    await cliente.patch(f"/api/v1/incidentes/{d['incidente_id']}/falso_positivo", params={"motivo": "Sensor com defeito"})
+    det = (await cliente.get(f"/api/v1/incidentes/{d['incidente_id']}")).json()
+    assert det["fechado_por"] == "anonimo"
+    assert det["historico"][-1]["texto"] == "Marcado como falso alarme: Sensor com defeito"
+
+    r = (await cliente.post("/api/v1/webhook/zabbix", json=zbx("9100"), headers=SERVICO)).json()
+    await cliente.post("/api/v1/webhook/zabbix", json=zbx("9100", "RESOLVED"), headers=SERVICO)
+    det = (await cliente.get(f"/api/v1/incidentes/{r['incidente_id']}")).json()
+    assert det["fechado_por"] == "zabbix"
+    assert [p["tipo"] for p in det["historico"]] == ["aberto", "acionamento", "recuperado", "encerrado"]
+
+
 # ── S6: e-mail, inventário, topologia e avaliação ───────────────────
 async def test_relato_por_email(cliente, db):
     r = await cliente.post("/api/v1/ingestao/email", headers=SERVICO, json={
